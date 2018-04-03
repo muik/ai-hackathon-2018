@@ -99,6 +99,8 @@ def bias_variable(shape):
 
 
 if __name__ == '__main__':
+    print('tf version: %s' % tf.__version__)
+
     args = argparse.ArgumentParser()
     # DONOTCHANGE: They are reserved for nsml
     args.add_argument('--mode', type=str, default='train')
@@ -130,17 +132,11 @@ if __name__ == '__main__':
     char_embedding = tf.get_variable('char_embedding', [character_size, config.embedding])
     embedded = tf.nn.embedding_lookup(char_embedding, x)
 
-    # 첫 번째 레이어
-    first_layer_weight = weight_variable([input_size, hidden_layer_size])
-    first_layer_bias = bias_variable([hidden_layer_size])
-    hidden_layer = tf.matmul(tf.reshape(embedded, (-1, input_size)),
-                             first_layer_weight) + first_layer_bias
-
-    # 두 번째 (아웃풋) 레이어
-    second_layer_weight = weight_variable([hidden_layer_size, output_size])
-    second_layer_bias = bias_variable([output_size])
-    output = tf.matmul(hidden_layer, second_layer_weight) + second_layer_bias
-    output_sigmoid = tf.sigmoid(output)
+    hidden_layer = tf.reshape(embedded, [-1, input_size])
+    hidden_layer = tf.contrib.layers.fully_connected(hidden_layer, hidden_layer_size,
+            activation_fn=None)
+    output_sigmoid = tf.contrib.layers.fully_connected(hidden_layer, output_size,
+            activation_fn=tf.nn.sigmoid)
 
     # loss와 optimizer
     binary_cross_entropy = tf.reduce_mean(-(y_ * tf.log(output_sigmoid)) - (1-y_) * tf.log(1-output_sigmoid))
