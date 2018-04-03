@@ -9,6 +9,9 @@ def local_save(sess, epoch, *args):
     saver = tf.train.Saver()
     saver.save(sess, os.path.join(PATH, str(epoch)))
 
+    train_writer = tf.summary.FileWriter(os.path.join(PATH, str(epoch)),
+            sess.graph)
+
 def local_load(sess):
     saver = tf.train.Saver()
     ckpt = tf.train.get_checkpoint_state(PATH)

@@ -24,6 +24,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 import os
 
 import numpy as np
+import pandas as pd
 
 from kor_char_parser import decompose_str_as_one_hot
 
@@ -44,17 +45,38 @@ class KinQueryDataset:
 
         # 지식인 데이터를 읽고 preprocess까지 진행합니다
         with open(queries_path, 'rt', encoding='utf8') as f:
-            self.queries = preprocess(f.readlines(), max_length)
+            self.queries1, self.queries2 = preprocess(f.readlines(), max_length)
         # 지식인 레이블을 읽고 preprocess까지 진행합니다.
         with open(labels_path) as f:
             self.labels = np.array([[np.float32(x)] for x in f.readlines()])
+
+        # 데이터 분석
+        sentence_lengths = []
+        word_counts = []
+        with open(queries_path, 'rt', encoding='utf8') as f:
+            for line in f:
+                #print(line.rstrip())
+                s1, s2 = line.strip().split("\t")
+                sentence_lengths.append(len(s1))
+                sentence_lengths.append(len(s2))
+                word_counts.append(len(s1.split()))
+                word_counts.append(len(s2.split()))
+        df = pd.DataFrame(data={'sentence_length': sentence_lengths, 'word_count': word_counts})
+        print(df.describe(percentiles=[0.95, 0.99]))
+
+        #with open(labels_path) as f:
+        #    for label in f:
+        #        print(label.rstrip())
+        labels = self.labels.flatten()
+        print('0 labels count:', (labels == 0).sum())
+        print('1 labels count:', (labels == 1).sum())
 
     def __len__(self):
         """
 
         :return: 전체 데이터의 수를 리턴합니다
         """
-        return len(self.queries)
+        return len(self.queries1)
 
     def __getitem__(self, idx):
         """
@@ -62,7 +84,7 @@ class KinQueryDataset:
         :param idx: 필요한 데이터의 인덱스
         :return: 인덱스에 맞는 데이터, 레이블 pair를 리턴합니다
         """
-        return self.queries[idx], self.labels[idx]
+        return self.queries1[idx], self.queries2[idx], self.labels[idx]
 
 
 def preprocess(data: list, max_length: int):
@@ -75,13 +97,25 @@ def preprocess(data: list, max_length: int):
     :param max_length: 문자열의 최대 길이
     :return: 벡터 리스트 ([[0, 1, 5, 6], [5, 4, 10, 200], ...]) max_length가 4일 때
     """
-    vectorized_data = [decompose_str_as_one_hot(datum, warning=False) for datum in data]
-    zero_padding = np.zeros((len(data), max_length), dtype=np.int32)
-    for idx, seq in enumerate(vectorized_data):
-        length = len(seq)
-        if length >= max_length:
-            length = max_length
-            zero_padding[idx, :length] = np.array(seq)[:length]
-        else:
-            zero_padding[idx, :length] = np.array(seq)
-    return zero_padding
+    vectorized_data1 = []
+    vectorized_data2 = []
+    for datum in data:
+        s1, s2 = datum.strip().split("\t")
+        vectorized_data1.append(decompose_str_as_one_hot(s1, warning=False))
+        vectorized_data2.append(decompose_str_as_one_hot(s2, warning=False))
+
+    def to_zero_padded(vectorized_data):
+        zero_padding = np.zeros((len(data), max_length), dtype=np.int32)
+        for idx, seq in enumerate(vectorized_data):
+            length = len(seq)
+            if length >= max_length:
+                length = max_length
+                zero_padding[idx, :length] = np.array(seq)[:length]
+            else:
+                zero_padding[idx, :length] = np.array(seq)
+        return zero_padding
+
+    zero_padding1 = to_zero_padded(vectorized_data1)
+    zero_padding2 = to_zero_padded(vectorized_data2)
+
+    return zero_padding1, zero_padding2

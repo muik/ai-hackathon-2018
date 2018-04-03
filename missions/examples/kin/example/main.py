@@ -26,6 +26,7 @@ import os
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.keras.layers import Bidirectional, LSTM
 
 import nsml
 from nsml import DATASET_PATH, HAS_DATASET, IS_ON_NSML
@@ -62,9 +63,9 @@ def bind_model(sess, config):
         :return:
         """
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
-        preprocessed_data = preprocess(raw_data, config.strmaxlen)
+        data1, data2 = preprocess(raw_data, config.strmaxlen)
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
-        pred = sess.run(output_sigmoid, feed_dict={x: preprocessed_data})
+        pred = sess.run(output_sigmoid, feed_dict={x1: data1, x2: data2})
         clipped = np.array(pred > config.threshold, dtype=np.int)
         # DONOTCHANGE: They are reserved for nsml
         # 리턴 결과는 [(확률, 0 or 1)] 의 형태로 보내야만 리더보드에 올릴 수 있습니다. 리더보드 결과에 확률의 값은 영향을 미치지 않습니다
@@ -99,8 +100,6 @@ def bias_variable(shape):
 
 
 if __name__ == '__main__':
-    print('tf version: %s' % tf.__version__)
-
     args = argparse.ArgumentParser()
     # DONOTCHANGE: They are reserved for nsml
     args.add_argument('--mode', type=str, default='train')
@@ -111,8 +110,8 @@ if __name__ == '__main__':
     args.add_argument('--output', type=int, default=1)
     args.add_argument('--epochs', type=int, default=10)
     args.add_argument('--batch', type=int, default=100)
-    args.add_argument('--strmaxlen', type=int, default=400)
-    args.add_argument('--embedding', type=int, default=16)
+    args.add_argument('--strmaxlen', type=int, default=84)
+    args.add_argument('--embedding', type=int, default=8)
     args.add_argument('--threshold', type=float, default=0.5)
     config = args.parse_args()
 
@@ -126,20 +125,43 @@ if __name__ == '__main__':
     learning_rate = 0.001
     character_size = 251
 
-    x = tf.placeholder(tf.int32, [None, config.strmaxlen])
+    x1 = tf.placeholder(tf.int32, [None, config.strmaxlen])
+    x2 = tf.placeholder(tf.int32, [None, config.strmaxlen])
     y_ = tf.placeholder(tf.float32, [None, output_size])
     # 임베딩
     char_embedding = tf.get_variable('char_embedding', [character_size, config.embedding])
-    embedded = tf.nn.embedding_lookup(char_embedding, x)
-    embedded = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(config.embedding))(embedded)
 
-    hidden_layer = tf.contrib.layers.fully_connected(embedded, hidden_layer_size)
-    output_sigmoid = tf.contrib.layers.fully_connected(hidden_layer, output_size,
-            activation_fn=tf.nn.sigmoid)
+    def sentence_embedding(x):
+        embedded = tf.nn.embedding_lookup(char_embedding, x)
+        with tf.variable_scope('sentence', reuse=tf.AUTO_REUSE):
+            #embedded = Bidirectional(LSTM(config.embedding))(embedded)
+            hidden_layer = tf.reshape(embedded, [-1, input_size])
+            hidden_layer = tf.contrib.layers.fully_connected(hidden_layer, 200)
+            hidden_layer = tf.contrib.layers.fully_connected(hidden_layer, 100)
+            hidden_layer = tf.contrib.layers.fully_connected(hidden_layer, 20)
+        return hidden_layer
+
+    sentence1 = sentence_embedding(x1)
+    sentence2 = sentence_embedding(x2)
+
+    sentence1 = tf.nn.l2_normalize(sentence1, 1)
+    sentence2 = tf.nn.l2_normalize(sentence2, 1)
+
+    # cosine similarity
+    similarity = tf.multiply(sentence1, sentence2)
+    similarity = tf.reduce_sum(similarity, 1)
+
+    output_sigmoid = tf.sigmoid(similarity)
 
     # loss와 optimizer
     binary_cross_entropy = tf.reduce_mean(-(y_ * tf.log(output_sigmoid)) - (1-y_) * tf.log(1-output_sigmoid))
-    train_step = tf.train.AdamOptimizer(learning_rate).minimize(binary_cross_entropy)
+
+    # l2 loss
+    t_vars = [v for v in tf.trainable_variables() if not 'char_embedding' in v.name]
+    l2_loss = tf.add_n([ tf.nn.l2_loss(v) for v in t_vars ])
+    loss_op = binary_cross_entropy + l2_loss * 0.0001
+
+    train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss_op)
 
     prediction = tf.cast(output_sigmoid > config.threshold, dtype=tf.float32)
     accuracy_op, accuracy_updates = tf.metrics.accuracy(y_, prediction)
@@ -165,17 +187,18 @@ if __name__ == '__main__':
         # epoch마다 학습을 수행합니다.
         for epoch in range(config.epochs):
             avg_loss = 0.0
-            for i, (data, labels) in enumerate(_batch_loader(dataset, config.batch)):
-                _, loss = sess.run([train_step, binary_cross_entropy],
-                                   feed_dict={x: data, y_: labels})
+            for i, (data1, data2, labels) in enumerate(_batch_loader(dataset, config.batch)):
+                _, loss = sess.run([train_step, loss_op],
+                        feed_dict={x1: data1, x2: data2, y_: labels})
                 print('Batch : ', i + 1, '/', one_batch_size,
                       ', BCE in this minibatch: ', float(loss))
                 avg_loss += float(loss)
 
             # Accuracy
             accuracies = []
-            for i, (data, labels) in enumerate(_batch_loader(dataset, config.batch)):
-                _, accuracy = sess.run([accuracy_updates, accuracy_op], feed_dict={x: data, y_: labels})
+            for i, (data1, data2, labels) in enumerate(_batch_loader(dataset, config.batch)):
+                _, accuracy = sess.run([accuracy_updates, accuracy_op],
+                        feed_dict={x1: data1, x2: data2, y_: labels})
                 accuracies.append(accuracy)
             accuracy = np.mean(np.array(accuracies))
 
