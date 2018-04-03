@@ -122,7 +122,7 @@ if __name__ == '__main__':
     # 모델의 specification
     input_size = config.embedding*config.strmaxlen
     output_size = 1
-    hidden_layer_size = 200
+    hidden_layer_size = 20
     learning_rate = 0.001
     character_size = 251
 
@@ -131,10 +131,9 @@ if __name__ == '__main__':
     # 임베딩
     char_embedding = tf.get_variable('char_embedding', [character_size, config.embedding])
     embedded = tf.nn.embedding_lookup(char_embedding, x)
+    embedded = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(config.embedding))(embedded)
 
-    hidden_layer = tf.reshape(embedded, [-1, input_size])
-    hidden_layer = tf.contrib.layers.fully_connected(hidden_layer, hidden_layer_size,
-            activation_fn=None)
+    hidden_layer = tf.contrib.layers.fully_connected(embedded, hidden_layer_size)
     output_sigmoid = tf.contrib.layers.fully_connected(hidden_layer, output_size,
             activation_fn=tf.nn.sigmoid)
 
