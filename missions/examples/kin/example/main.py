@@ -142,8 +142,12 @@ if __name__ == '__main__':
     binary_cross_entropy = tf.reduce_mean(-(y_ * tf.log(output_sigmoid)) - (1-y_) * tf.log(1-output_sigmoid))
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(binary_cross_entropy)
 
+    prediction = tf.cast(output_sigmoid > config.threshold, dtype=tf.float32)
+    accuracy_op, accuracy_updates = tf.metrics.accuracy(y_, prediction)
+
     sess = tf.InteractiveSession()
     tf.global_variables_initializer().run()
+    tf.local_variables_initializer().run()
 
     # DONOTCHANGE: Reserved for nsml
     bind_model(sess=sess, config=config)
@@ -168,7 +172,16 @@ if __name__ == '__main__':
                 print('Batch : ', i + 1, '/', one_batch_size,
                       ', BCE in this minibatch: ', float(loss))
                 avg_loss += float(loss)
-            print('epoch:', epoch, ' train_loss:', float(avg_loss/one_batch_size))
+
+            # Accuracy
+            accuracies = []
+            for i, (data, labels) in enumerate(_batch_loader(dataset, config.batch)):
+                _, accuracy = sess.run([accuracy_updates, accuracy_op], feed_dict={x: data, y_: labels})
+                accuracies.append(accuracy)
+            accuracy = np.mean(np.array(accuracies))
+
+            print('epoch:', epoch, ' train_loss:', float(avg_loss/one_batch_size),
+                'accuracy:', accuracy)
             nsml.report(summary=True, scope=locals(), epoch=epoch, epoch_total=config.epochs,
                         train__loss=float(avg_loss/one_batch_size), step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
