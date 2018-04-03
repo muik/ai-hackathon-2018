@@ -30,7 +30,7 @@ import tensorflow as tf
 import nsml
 from nsml import DATASET_PATH, HAS_DATASET, IS_ON_NSML
 from dataset import KinQueryDataset, preprocess
-
+from util import local_save, local_load
 
 # DONOTCHANGE: They are reserved for nsml
 # This is for nsml leaderboard
@@ -178,14 +178,19 @@ if __name__ == '__main__':
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
 
+            if not HAS_DATASET and not IS_ON_NSML:
+                local_save(sess, epoch)
+
     # 로컬 테스트 모드일때 사용합니다
     # 결과가 아래와 같이 나온다면, nsml submit을 통해서 제출할 수 있습니다.
     # [(0.3, 0), (0.7, 1), ... ]
     elif config.mode == 'test_local':
+        if not HAS_DATASET and not IS_ON_NSML:
+            local_load(sess)
         with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
             queries = f.readlines()
         res = []
         for batch in _batch_loader(queries, config.batch):
             temp_res = nsml.infer(batch)
             res += temp_res
-        print(res)
+        print(temp_res)
