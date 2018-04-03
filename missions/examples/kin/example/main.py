@@ -110,7 +110,7 @@ if __name__ == '__main__':
     # User options
     args.add_argument('--output', type=int, default=1)
     args.add_argument('--epochs', type=int, default=10)
-    args.add_argument('--batch', type=int, default=2000)
+    args.add_argument('--batch', type=int, default=100)
     args.add_argument('--strmaxlen', type=int, default=400)
     args.add_argument('--embedding', type=int, default=8)
     args.add_argument('--threshold', type=float, default=0.5)
