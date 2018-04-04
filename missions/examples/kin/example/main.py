@@ -190,7 +190,9 @@ if __name__ == '__main__':
         # epoch마다 학습을 수행합니다.
         for epoch in range(config.epochs):
             avg_loss = 0.0
-            for i, (data1, data2, labels) in enumerate(_batch_loader(dataset, config.batch)):
+            next_element = dataset.get_next(config.batch)
+            for i in range(one_batch_size):
+                data1, data2, labels = sess.run(next_element)
                 _, loss = sess.run([train_step, loss_op],
                         feed_dict={x1: data1, x2: data2, y_: labels})
                 print('Batch : ', i + 1, '/', one_batch_size,
@@ -199,7 +201,9 @@ if __name__ == '__main__':
 
             # Accuracy
             accuracies = []
-            for i, (data1, data2, labels) in enumerate(_batch_loader(dataset, config.batch)):
+            next_element = dataset.get_next(config.batch)
+            for i in range(one_batch_size // 10):
+                data1, data2, labels = sess.run(next_element)
                 _, accuracy = sess.run([accuracy_updates, accuracy_op],
                         feed_dict={x1: data1, x2: data2, y_: labels})
                 accuracies.append(accuracy)

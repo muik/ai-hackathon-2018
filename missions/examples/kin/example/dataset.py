@@ -25,6 +25,7 @@ import os
 
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 
 from kor_char_parser import decompose_str_as_one_hot
 
@@ -50,6 +51,9 @@ class KinQueryDataset:
         with open(labels_path) as f:
             self.labels = np.array([[np.float32(x)] for x in f.readlines()])
 
+        self.dataset = tf.data.Dataset.from_tensor_slices((
+            self.queries1, self.queries2, self.labels))
+
         # 데이터 분석
         sentence_lengths = []
         word_counts = []
@@ -70,6 +74,10 @@ class KinQueryDataset:
         labels = self.labels.flatten()
         print('0 labels count:', (labels == 0).sum())
         print('1 labels count:', (labels == 1).sum())
+
+    def get_next(self, batch_size):
+        return self.dataset.shuffle(1000).batch(batch_size) \
+                .make_one_shot_iterator().get_next()
 
     def __len__(self):
         """
