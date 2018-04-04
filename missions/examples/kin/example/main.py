@@ -134,7 +134,8 @@ if __name__ == '__main__':
     def sentence_embedding(x):
         embedded = tf.nn.embedding_lookup(char_embedding, x)
         with tf.variable_scope('sentence', reuse=tf.AUTO_REUSE):
-            #embedded = Bidirectional(LSTM(config.embedding))(embedded)
+            embedded = Bidirectional(LSTM(config.embedding))(embedded)
+            return embedded
             hidden_layer = tf.reshape(embedded, [-1, input_size])
             hidden_layer = tf.contrib.layers.fully_connected(hidden_layer, 200)
             hidden_layer = tf.contrib.layers.fully_connected(hidden_layer, 100)
@@ -148,10 +149,12 @@ if __name__ == '__main__':
     sentence2 = tf.nn.l2_normalize(sentence2, 1)
 
     # cosine similarity
-    similarity = tf.multiply(sentence1, sentence2)
-    similarity = tf.reduce_sum(similarity, 1)
+    dot = tf.reduce_sum(tf.multiply(sentence1, sentence2), 1)
+    norm1 = tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(sentence1), 1)), 0.000000001)
+    norm2 = tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(sentence2), 1)), 0.000000001)
+    similarity = dot / (norm1 * norm2)
 
-    output_sigmoid = tf.sigmoid(similarity)
+    output_sigmoid = tf.sigmoid(similarity - 0.8)
 
     # loss와 optimizer
     binary_cross_entropy = tf.reduce_mean(-(y_ * tf.log(output_sigmoid)) - (1-y_) * tf.log(1-output_sigmoid))
