@@ -27,6 +27,7 @@ import os
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.keras.layers import Bidirectional, LSTM
+from tensorflow.python.keras import backend as K
 
 import nsml
 from nsml import DATASET_PATH, HAS_DATASET, IS_ON_NSML
@@ -110,10 +111,21 @@ if __name__ == '__main__':
     args.add_argument('--output', type=int, default=1)
     args.add_argument('--epochs', type=int, default=10)
     args.add_argument('--batch', type=int, default=100)
-    args.add_argument('--strmaxlen', type=int, default=84)
-    args.add_argument('--embedding', type=int, default=8)
+    args.add_argument('--strmaxlen', type=int, default=168)
+    args.add_argument('--embedding', type=int, default=16)
     args.add_argument('--threshold', type=float, default=0.5)
+    args.add_argument('--use_gpu', action="store_true", default=False)
     config = args.parse_args()
+
+    if config.mode == 'train':
+        dropout_keep_prob = 0.5
+    else:
+        dropout_keep_prob = 1.0
+
+    if config.use_gpu:
+        base_cell=tf.contrib.cudnn_rnn.CudnnLSTM
+    else:
+        base_cell=tf.contrib.rnn.BasicLSTMCell
 
     if not HAS_DATASET and not IS_ON_NSML:  # It is not running on nsml
         DATASET_PATH = '../sample_data/kin/'
@@ -127,47 +139,99 @@ if __name__ == '__main__':
 
     x1 = tf.placeholder(tf.int32, [None, config.strmaxlen])
     x2 = tf.placeholder(tf.int32, [None, config.strmaxlen])
+    x1_len = tf.placeholder(tf.int32, [None])
+    x2_len = tf.placeholder(tf.int32, [None])
     y_ = tf.placeholder(tf.float32, [None, output_size])
     # 임베딩
     char_embedding = tf.get_variable('char_embedding', [character_size, config.embedding])
+    x1_len = tf.minimum(x1_len, config.strmaxlen)
+    x2_len = tf.minimum(x2_len, config.strmaxlen)
 
-    def sentence_embedding(x):
+    def make_rnn_cells(rnn_layer_sizes):
+      cells = []
+      for num_units in rnn_layer_sizes:
+        cell = base_cell(num_units)
+        cell = tf.contrib.rnn.HighwayWrapper(cell)
+        cell = tf.contrib.rnn.DropoutWrapper(cell,
+                output_keep_prob=dropout_keep_prob)
+        cells.append(cell)
+      return cells
+
+    def sentence_embedding(x, length, reuse=False):
         embedded = tf.nn.embedding_lookup(char_embedding, x)
-        with tf.variable_scope('sentence', reuse=tf.AUTO_REUSE):
-            embedded = Bidirectional(LSTM(config.embedding))(embedded)
-            return embedded
-            hidden_layer = tf.reshape(embedded, [-1, input_size])
-            hidden_layer = tf.contrib.layers.fully_connected(hidden_layer, 200)
-            hidden_layer = tf.contrib.layers.fully_connected(hidden_layer, 100)
-            hidden_layer = tf.contrib.layers.fully_connected(hidden_layer, 20)
-        return hidden_layer
+        mask = tf.sequence_mask(length, config.strmaxlen, dtype=tf.float32)
+        mask = tf.expand_dims(mask, 2)
+        embedded = embedded * mask
 
-    sentence1 = sentence_embedding(x1)
-    sentence2 = sentence_embedding(x2)
+        with tf.variable_scope('sentence', reuse=reuse):
+            layer_sizes = [16, 32]
+            cells_fw = make_rnn_cells(layer_sizes)
+            cells_bw = make_rnn_cells(layer_sizes)
+            outputs, output_state_fw, output_state_bw = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
+                    cells_fw, cells_bw, embedded, dtype=tf.float32)
+            expaned_outputs = tf.reshape(outputs, [-1, config.strmaxlen*64])
+            attention = tf.contrib.layers.fully_connected(expaned_outputs,
+                    config.strmaxlen, activation_fn=tf.nn.softmax)
+            attention = tf.layers.dropout(attention, dropout_keep_prob)
+            expanded_attention = tf.expand_dims(attention, 1)
+            context = tf.matmul(expanded_attention, outputs)
+            return tf.squeeze(context, 1)
+
+    y_target = tf.reshape(y_, [-1])
+    sentence1 = sentence_embedding(x1, x1_len)
+    sentence2 = sentence_embedding(x2, x2_len, True)
 
     sentence1 = tf.nn.l2_normalize(sentence1, 1)
     sentence2 = tf.nn.l2_normalize(sentence2, 1)
 
     # cosine similarity
     dot = tf.reduce_sum(tf.multiply(sentence1, sentence2), 1)
-    norm1 = tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(sentence1), 1)), 0.000000001)
-    norm2 = tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(sentence2), 1)), 0.000000001)
-    similarity = dot / (norm1 * norm2)
+    #epsilon = tf.keras.backend.epsilon()
+    #norm1 = tf.sqrt(tf.maximum(tf.reduce_sum(tf.square(sentence1), 1), epsilon))
+    #norm2 = tf.sqrt(tf.maximum(tf.reduce_sum(tf.square(sentence2), 1), epsilon))
+    #similarity = dot / (norm1 * norm2)
+    #output_sigmoid = tf.sigmoid(similarity)
 
-    output_sigmoid = tf.sigmoid(similarity - 0.8)
+    # euclidean distance
+    #euclidean_distance = K.sqrt(K.maximum(K.sum(K.square(sentence1 - sentence2), axis=1, keepdims=True), K.epsilon()))
+    #contrastive_loss = K.mean(y_target * K.square(euclidean_distance) +
+    #              (1 - y_target) * K.square(K.maximum(1 - euclidean_distance, 0)))
 
-    # loss와 optimizer
-    binary_cross_entropy = tf.reduce_mean(-(y_ * tf.log(output_sigmoid)) - (1-y_) * tf.log(1-output_sigmoid))
+    # cosine + contrastive
+    # https://www.slideshare.net/NicholasMcClure1/siamese-networks
+    margin = 0.25
+    scores = (dot + 1.) / 2.
+    positive_loss = y_target * (0.25 * tf.square(1. - scores))
+    negative_loss = (1. - y_target) * tf.square(scores)
+    contrastive_loss = positive_loss + negative_loss
+    #contrastive_loss = tf.Print(contrastive_loss, [y_target, scores, positive_loss, negative_loss])
+    target_zero = tf.equal(y_target, 0.)
+    less_than_margin = tf.less(scores, margin)
+    both_logical = tf.logical_and(target_zero, less_than_margin)
+    both_logical = tf.cast(both_logical, tf.float32)
+    multiplicative_factor = tf.cast(1. - both_logical, tf.float32)
+    contrastive_loss = tf.multiply(contrastive_loss, multiplicative_factor)
+    #total_loss = tf.Print(total_loss, [char_embedding, y_target, scores, total_loss])
+    loss_op = tf.reduce_mean(contrastive_loss)
+
+    pos_loss_op = tf.reduce_sum(y_target * contrastive_loss)
+    neg_loss_op = tf.reduce_sum((1-y_target) * contrastive_loss)
+
+    prediction = scores > config.threshold
+    #loss_op = tf.Print(loss_op, [scores, prediction, y_target])
+
+    # Check variables
+    #for v in tf.trainable_variables():
+    #    print(v)
 
     # l2 loss
-    t_vars = [v for v in tf.trainable_variables() if not 'char_embedding' in v.name]
-    l2_loss = tf.add_n([ tf.nn.l2_loss(v) for v in t_vars ])
-    loss_op = binary_cross_entropy + l2_loss * 0.0001
+    #t_vars = [v for v in tf.trainable_variables() if not 'char_embedding' in v.name]
+    #l2_loss = tf.add_n([ tf.nn.l2_loss(v) for v in t_vars ])
+    #loss_op = loss_op #+ l2_loss * 0.001
 
     train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss_op)
 
-    prediction = tf.cast(output_sigmoid > config.threshold, dtype=tf.float32)
-    accuracy_op, accuracy_updates = tf.metrics.accuracy(y_, prediction)
+    accuracy_op, accuracy_updates = tf.metrics.accuracy(y_target, prediction)
 
     sess = tf.InteractiveSession()
     tf.global_variables_initializer().run()
@@ -184,6 +248,7 @@ if __name__ == '__main__':
         # 데이터를 로드합니다.
         dataset = KinQueryDataset(DATASET_PATH, config.strmaxlen)
         dataset_len = len(dataset)
+        print("Total dataset size:", dataset_len)
         one_batch_size = dataset_len//config.batch
         if dataset_len % config.batch != 0:
             one_batch_size += 1
@@ -192,21 +257,22 @@ if __name__ == '__main__':
             avg_loss = 0.0
             next_element = dataset.get_next(config.batch)
             for i in range(one_batch_size):
-                data1, data2, labels = sess.run(next_element)
-                _, loss = sess.run([train_step, loss_op],
-                        feed_dict={x1: data1, x2: data2, y_: labels})
+                data1, data2, d1_len, d2_len, labels = sess.run(next_element)
+                _, loss, p_loss, n_loss = sess.run([train_step, loss_op, pos_loss_op, neg_loss_op],
+                        feed_dict={x1: data1, x2: data2, x1_len: d1_len, x2_len: d2_len, y_: labels})
                 print('Batch : ', i + 1, '/', one_batch_size,
-                      ', BCE in this minibatch: ', float(loss))
+                      ', BCE in this minibatch: ', float(loss), float(p_loss), float(n_loss))
                 avg_loss += float(loss)
 
             # Accuracy
             accuracies = []
             next_element = dataset.get_next(config.batch)
-            for i in range(one_batch_size // 10):
-                data1, data2, labels = sess.run(next_element)
+            for i in range(max(one_batch_size // 10, 1)):
+                data1, data2, d1_len, d2_len, labels = sess.run(next_element)
                 _, accuracy = sess.run([accuracy_updates, accuracy_op],
-                        feed_dict={x1: data1, x2: data2, y_: labels})
+                        feed_dict={x1: data1, x2: data2, x1_len: d1_len, x2_len: d2_len, y_: labels})
                 accuracies.append(accuracy)
+
             accuracy = np.mean(np.array(accuracies))
 
             print('epoch:', epoch, ' train_loss:', float(avg_loss/one_batch_size),
