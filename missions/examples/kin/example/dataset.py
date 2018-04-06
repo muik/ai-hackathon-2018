@@ -79,6 +79,10 @@ class KinQueryDataset:
         return self.dataset.shuffle(1000).batch(batch_size) \
                 .make_one_shot_iterator().get_next()
 
+    def make_initializable_iterator(self, batch_size):
+        return self.dataset.shuffle(1000).repeat().batch(batch_size) \
+                .make_initializable_iterator()
+
     def __len__(self):
         """
 

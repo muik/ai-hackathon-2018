@@ -64,9 +64,10 @@ def bind_model(sess, config):
         :return:
         """
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
-        data1, data2 = preprocess(raw_data, config.strmaxlen)
+        data1, data2, d1_len, d2_len = preprocess(raw_data, config.strmaxlen)
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
-        pred = sess.run(output_sigmoid, feed_dict={x1: data1, x2: data2})
+        pred = sess.run(output_sigmoid, feed_dict={
+            x1: data1, x2: data2, x1_len: d1_len, x2_len: d2_len})
         clipped = np.array(pred > config.threshold, dtype=np.int)
         # DONOTCHANGE: They are reserved for nsml
         # 리턴 결과는 [(확률, 0 or 1)] 의 형태로 보내야만 리더보드에 올릴 수 있습니다. 리더보드 결과에 확률의 값은 영향을 미치지 않습니다
@@ -112,15 +113,17 @@ if __name__ == '__main__':
     args.add_argument('--epochs', type=int, default=10)
     args.add_argument('--batch', type=int, default=100)
     args.add_argument('--strmaxlen', type=int, default=168)
-    args.add_argument('--embedding', type=int, default=16)
+    args.add_argument('--embedding', type=int, default=32)
     args.add_argument('--threshold', type=float, default=0.5)
     args.add_argument('--use_gpu', action="store_true", default=False)
     config = args.parse_args()
 
     if config.mode == 'train':
         dropout_keep_prob = 0.5
+        is_training = True
     else:
         dropout_keep_prob = 1.0
+        is_training = False
 
     if config.use_gpu:
         base_cell=tf.contrib.cudnn_rnn.CudnnLSTM
@@ -157,6 +160,39 @@ if __name__ == '__main__':
         cells.append(cell)
       return cells
 
+    def rnn(x):
+        layer_sizes = [config.embedding, config.embedding*2]
+        cells_fw = make_rnn_cells(layer_sizes)
+        cells_bw = make_rnn_cells(layer_sizes)
+        outputs, output_state_fw, output_state_bw = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
+                cells_fw, cells_bw, x, dtype=tf.float32)
+        return outputs
+
+    def cudnn_rnn(x):
+        # Convolutions output [B, L, Ch], while CudnnLSTM is time-major.
+        x = tf.transpose(x, [1, 0, 2])
+        num_layers = 2
+        hidden_size = config.embedding
+        batch_size = config.batch
+        lstm = tf.contrib.cudnn_rnn.CudnnLSTM(
+                num_layers=num_layers,
+                num_units=hidden_size,
+                input_size=hidden_size,
+                dropout=1.0 - dropout_keep_prob,
+                direction="bidirectional")
+        params_size_t = lstm.params_size()
+        init_scale = 0.05
+        rnn_params = tf.get_variable(
+            "lstm_params",
+            initializer=tf.random_uniform([params_size_t], -init_scale, init_scale),
+            validate_shape=False)
+        c = tf.zeros([num_layers, batch_size, hidden_size], tf.float32)
+        h = tf.zeros([num_layers, batch_size, hidden_size], tf.float32)
+        initial_state = (tf.contrib.rnn.LSTMStateTuple(h=h, c=c),)
+        outputs, _, _ = lstm(x, h, c, rnn_params, is_training=is_training)
+        # Convert back from time-major outputs to batch-major outputs.
+        return tf.transpose(outputs, [1, 0, 2])
+
     def sentence_embedding(x, length, reuse=False):
         embedded = tf.nn.embedding_lookup(char_embedding, x)
         mask = tf.sequence_mask(length, config.strmaxlen, dtype=tf.float32)
@@ -164,12 +200,12 @@ if __name__ == '__main__':
         embedded = embedded * mask
 
         with tf.variable_scope('sentence', reuse=reuse):
-            layer_sizes = [16, 32]
-            cells_fw = make_rnn_cells(layer_sizes)
-            cells_bw = make_rnn_cells(layer_sizes)
-            outputs, output_state_fw, output_state_bw = tf.contrib.rnn.stack_bidirectional_dynamic_rnn(
-                    cells_fw, cells_bw, embedded, dtype=tf.float32)
-            expaned_outputs = tf.reshape(outputs, [-1, config.strmaxlen*64])
+            if config.use_gpu:
+                outputs = cudnn_rnn(embedded)
+                expaned_outputs = tf.reshape(outputs, [-1, config.strmaxlen*config.embedding*2])
+            else:
+                outputs = rnn(embedded)
+                expaned_outputs = tf.reshape(outputs, [-1, config.strmaxlen*config.embedding*4])
             attention = tf.contrib.layers.fully_connected(expaned_outputs,
                     config.strmaxlen, activation_fn=tf.nn.softmax)
             attention = tf.layers.dropout(attention, dropout_keep_prob)
@@ -218,6 +254,7 @@ if __name__ == '__main__':
     neg_loss_op = tf.reduce_sum((1-y_target) * contrastive_loss)
 
     prediction = scores > config.threshold
+    output_sigmoid = scores
     #loss_op = tf.Print(loss_op, [scores, prediction, y_target])
 
     # Check variables
@@ -252,10 +289,14 @@ if __name__ == '__main__':
         one_batch_size = dataset_len//config.batch
         if dataset_len % config.batch != 0:
             one_batch_size += 1
+
+        iterator = dataset.make_initializable_iterator(config.batch)
+        sess.run(iterator.initializer)
+        next_element = iterator.get_next()
+
         # epoch마다 학습을 수행합니다.
         for epoch in range(config.epochs):
             avg_loss = 0.0
-            next_element = dataset.get_next(config.batch)
             for i in range(one_batch_size):
                 data1, data2, d1_len, d2_len, labels = sess.run(next_element)
                 _, loss, p_loss, n_loss = sess.run([train_step, loss_op, pos_loss_op, neg_loss_op],
@@ -264,9 +305,11 @@ if __name__ == '__main__':
                       ', BCE in this minibatch: ', float(loss), float(p_loss), float(n_loss))
                 avg_loss += float(loss)
 
+            sess.run(iterator.initializer)
+            next_element = iterator.get_next()
+
             # Accuracy
             accuracies = []
-            next_element = dataset.get_next(config.batch)
             for i in range(max(one_batch_size // 10, 1)):
                 data1, data2, d1_len, d2_len, labels = sess.run(next_element)
                 _, accuracy = sess.run([accuracy_updates, accuracy_op],
@@ -295,6 +338,11 @@ if __name__ == '__main__':
             queries = f.readlines()
         res = []
         for batch in _batch_loader(queries, config.batch):
-            temp_res = nsml.infer(batch)
+            batch_size = len(batch)
+            if config.use_gpu and batch_size < config.batch:
+                batch += [".\t."] * (config.batch - batch_size)
+                temp_res = nsml.infer(batch)[:batch_size]
+            else:
+                temp_res = nsml.infer(batch)
             res += temp_res
         print(temp_res)
