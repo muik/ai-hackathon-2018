@@ -255,7 +255,13 @@ if __name__ == '__main__':
 
     prediction = scores > config.threshold
     output_sigmoid = scores
-    #loss_op = tf.Print(loss_op, [scores, prediction, y_target])
+
+    # manhattan_distance
+    distance = tf.exp(-tf.reduce_sum(tf.abs(sentence1 - sentence2), 1))
+    #distance = tf.Print(distance, [distance])
+    loss_op = tf.losses.mean_squared_error(y_target, distance)
+    prediction = distance > config.threshold
+    output_sigmoid = distance
 
     # Check variables
     #for v in tf.trainable_variables():
@@ -301,8 +307,9 @@ if __name__ == '__main__':
                 data1, data2, d1_len, d2_len, labels = sess.run(next_element)
                 _, loss, p_loss, n_loss = sess.run([train_step, loss_op, pos_loss_op, neg_loss_op],
                         feed_dict={x1: data1, x2: data2, x1_len: d1_len, x2_len: d2_len, y_: labels})
-                print('Batch : ', i + 1, '/', one_batch_size,
-                      ', BCE in this minibatch: ', float(loss), float(p_loss), float(n_loss))
+                if not config.use_gpu:
+                    print('Batch : ', i + 1, '/', one_batch_size,
+                          ', BCE in this minibatch: ', float(loss), float(p_loss), float(n_loss))
                 avg_loss += float(loss)
 
             sess.run(iterator.initializer)
@@ -321,7 +328,8 @@ if __name__ == '__main__':
             print('epoch:', epoch, ' train_loss:', float(avg_loss/one_batch_size),
                 'accuracy:', accuracy)
             nsml.report(summary=True, scope=locals(), epoch=epoch, epoch_total=config.epochs,
-                        train__loss=float(avg_loss/one_batch_size), step=epoch)
+                        train__loss=float(avg_loss/one_batch_size), step=epoch,
+                        accuracy=float(accuracy))
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
 
