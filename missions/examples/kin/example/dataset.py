@@ -22,6 +22,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 import os
+from itertools import combinations
 
 import numpy as np
 import pandas as pd
@@ -46,13 +47,21 @@ class KinQueryDataset:
 
         # 지식인 데이터를 읽고 preprocess까지 진행합니다
         with open(queries_path, 'rt', encoding='utf8') as f:
-            self.queries1, self.queries2, q1_lengths, q2_lengths = preprocess(f.readlines(), max_length)
+            self.queries1, self.queries2, self.q1_lengths, self.q2_lengths = preprocess(f.readlines(), max_length)
         # 지식인 레이블을 읽고 preprocess까지 진행합니다.
         with open(labels_path) as f:
             self.labels = np.array([[np.float32(x)] for x in f.readlines()])
 
+        # 같은 질문 데이터셋 추가
+        line_numbers = self.expand_same_set()
+
+        print('추가된 같은 질문 데이터셋 확인 (상위 50개)')
+        with open(queries_path, 'rt', encoding='utf8') as f:
+            same_set = np.array(f.readlines())[line_numbers[:50]]
+            print(same_set)
+
         self.dataset = tf.data.Dataset.from_tensor_slices((
-            self.queries1, self.queries2, q1_lengths, q2_lengths, self.labels))
+            self.queries1, self.queries2, self.q1_lengths, self.q2_lengths, self.labels))
 
         # 데이터 분석
         sentence_lengths = []
@@ -74,6 +83,46 @@ class KinQueryDataset:
         labels = self.labels.flatten()
         print('0 labels count:', (labels == 0).sum())
         print('1 labels count:', (labels == 1).sum())
+
+    def expand_same_set(self):
+        pre_q = np.array([])
+        pre_q_len = 0
+        same_queries = []
+        extra_data = []
+        line_numbers = []
+
+        same_index = np.squeeze(self.labels) == 1.0
+        lines = np.arange(self.labels.shape[0])
+
+        for q1, q2, q1_len, q2_len, line_num in zip(self.queries1[same_index], self.queries2[same_index],
+                self.q1_lengths[same_index], self.q2_lengths[same_index], lines[same_index]):
+            if pre_q_len == q1_len and np.array_equal(pre_q, q1):
+                same_queries.append((q2, q2_len, line_num))
+                continue
+            if len(same_queries) >= 2:
+                extra_data.extend(list(combinations(same_queries, 2)))
+                line_numbers.extend([n for _,_,n in same_queries])
+            pre_q = q1
+            pre_q_len = q1_len
+            same_queries = [(q2, q2_len, line_num)]
+
+        if len(same_queries) >= 2:
+            extra_data.extend(list(combinations(same_queries, 2)))
+
+        print("extra data count:", len(extra_data))
+        if not extra_data:
+            return
+
+        extra_q1 = np.array([q1[0] for q1, _ in extra_data])
+        extra_q2 = np.array([q2[0] for _, q2 in extra_data])
+        extra_q1_len = np.array([q1[1] for q1, _ in extra_data])
+        extra_q2_len = np.array([q2[1] for _, q2 in extra_data])
+        self.queries1 = np.vstack((self.queries1, extra_q1))
+        self.queries2 = np.vstack((self.queries2, extra_q2))
+        self.labels = np.vstack((self.labels, np.ones([extra_q1.shape[0], 1], dtype=np.float32)))
+        self.q1_lengths = np.concatenate((self.q1_lengths, extra_q1_len))
+        self.q2_lengths = np.concatenate((self.q2_lengths, extra_q2_len))
+        return line_numbers
 
     def get_next(self, batch_size):
         return self.dataset.shuffle(1000).batch(batch_size) \
@@ -142,4 +191,4 @@ def preprocess(data: list, max_length: int):
     zero_padding1 = to_zero_padded(vectorized_data1)
     zero_padding2 = to_zero_padded(vectorized_data2)
 
-    return zero_padding1, zero_padding2, vectorized_data1_lengths, vectorized_data2_lengths
+    return zero_padding1, zero_padding2, np.array(vectorized_data1_lengths), np.array(vectorized_data2_lengths)
