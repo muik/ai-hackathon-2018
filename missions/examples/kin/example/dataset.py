@@ -46,13 +46,13 @@ class KinQueryDataset:
 
         # 지식인 데이터를 읽고 preprocess까지 진행합니다
         with open(queries_path, 'rt', encoding='utf8') as f:
-            self.queries1, self.queries2 = preprocess(f.readlines(), max_length)
+            self.queries1, self.queries2, q1_lengths, q2_lengths = preprocess(f.readlines(), max_length)
         # 지식인 레이블을 읽고 preprocess까지 진행합니다.
         with open(labels_path) as f:
             self.labels = np.array([[np.float32(x)] for x in f.readlines()])
 
         self.dataset = tf.data.Dataset.from_tensor_slices((
-            self.queries1, self.queries2, self.labels))
+            self.queries1, self.queries2, q1_lengths, q2_lengths, self.labels))
 
         # 데이터 분석
         sentence_lengths = []
@@ -107,10 +107,22 @@ def preprocess(data: list, max_length: int):
     """
     vectorized_data1 = []
     vectorized_data2 = []
+    vectorized_data1_lengths = []
+    vectorized_data2_lengths = []
+
     for datum in data:
         s1, s2 = datum.strip().split("\t")
-        vectorized_data1.append(decompose_str_as_one_hot(s1, warning=False))
-        vectorized_data2.append(decompose_str_as_one_hot(s2, warning=False))
+        onehot1 = decompose_str_as_one_hot(s1, warning=False)
+        onehot2 = decompose_str_as_one_hot(s2, warning=False)
+        vectorized_data1.append(onehot1)
+        vectorized_data2.append(onehot2)
+        vectorized_data1_lengths.append(len(onehot1))
+        vectorized_data2_lengths.append(len(onehot2))
+
+    # one hot length
+    #v_data_lens = [len(x) for x in (vectorized_data1 + vectorized_data2)]
+    #df = pd.DataFrame(data={'vectorized_data_length': v_data_lens})
+    #print(df.describe(percentiles=[0.95, 0.997]))
 
     def to_zero_padded(vectorized_data):
         zero_padding = np.zeros((len(data), max_length), dtype=np.int32)
@@ -126,4 +138,4 @@ def preprocess(data: list, max_length: int):
     zero_padding1 = to_zero_padded(vectorized_data1)
     zero_padding2 = to_zero_padded(vectorized_data2)
 
-    return zero_padding1, zero_padding2
+    return zero_padding1, zero_padding2, vectorized_data1_lengths, vectorized_data2_lengths
