@@ -53,12 +53,12 @@ class KinQueryDataset:
             self.labels = np.array([[np.float32(x)] for x in f.readlines()])
 
         # 같은 질문 데이터셋 추가
-        line_numbers = self.expand_same_set()
+        #line_numbers = self.expand_same_set()
 
-        print('추가된 같은 질문 데이터셋 확인 (상위 50개)')
-        with open(queries_path, 'rt', encoding='utf8') as f:
-            same_set = np.array(f.readlines())[line_numbers[:50]]
-            print(same_set)
+        #print('추가된 같은 질문 데이터셋 확인 (상위 50개)')
+        #with open(queries_path, 'rt', encoding='utf8') as f:
+        #    same_set = np.array(f.readlines())[line_numbers[:50]]
+        #    print(same_set)
 
         self.dataset = tf.data.Dataset.from_tensor_slices((
             self.queries1, self.queries2, self.q1_lengths, self.q2_lengths, self.labels))
