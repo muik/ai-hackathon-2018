@@ -113,7 +113,7 @@ if __name__ == '__main__':
     args.add_argument('--epochs', type=int, default=10)
     args.add_argument('--batch', type=int, default=100)
     args.add_argument('--strmaxlen', type=int, default=168)
-    args.add_argument('--embedding', type=int, default=32)
+    args.add_argument('--embedding', type=int, default=128)
     args.add_argument('--threshold', type=float, default=0.5)
     args.add_argument('--use_gpu', action="store_true", default=False)
     config = args.parse_args()
@@ -233,11 +233,19 @@ if __name__ == '__main__':
     #contrastive_loss = K.mean(y_target * K.square(euclidean_distance) +
     #              (1 - y_target) * K.square(K.maximum(1 - euclidean_distance, 0)))
 
+    # manhattan_distance
+    distance = tf.exp(-tf.reduce_sum(tf.abs(sentence1 - sentence2), 1))
+    #distance = tf.Print(distance, [distance])
+    #loss_op = tf.losses.mean_squared_error(y_target, distance)
+    #prediction = distance > config.threshold
+    #output_sigmoid = distance
+
     # cosine + contrastive
     # https://www.slideshare.net/NicholasMcClure1/siamese-networks
     margin = 0.25
-    scores = (dot + 1.) / 2.
-    positive_loss = y_target * (0.25 * tf.square(1. - scores))
+    #scores = (dot + 1.) / 2.
+    scores = distance
+    positive_loss = y_target * (tf.square(1. - scores))
     negative_loss = (1. - y_target) * tf.square(scores)
     contrastive_loss = positive_loss + negative_loss
     #contrastive_loss = tf.Print(contrastive_loss, [y_target, scores, positive_loss, negative_loss])
@@ -255,13 +263,6 @@ if __name__ == '__main__':
 
     prediction = scores > config.threshold
     output_sigmoid = scores
-
-    # manhattan_distance
-    distance = tf.exp(-tf.reduce_sum(tf.abs(sentence1 - sentence2), 1))
-    #distance = tf.Print(distance, [distance])
-    loss_op = tf.losses.mean_squared_error(y_target, distance)
-    prediction = distance > config.threshold
-    output_sigmoid = distance
 
     # Check variables
     #for v in tf.trainable_variables():
