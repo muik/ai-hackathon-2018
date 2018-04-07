@@ -29,6 +29,7 @@ import torch
 from torch.autograd import Variable
 from torch import nn, optim
 from torch.utils.data import DataLoader
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 import nsml
 from dataset import MovieReviewDataset, preprocess
@@ -110,10 +111,28 @@ class Regression(nn.Module):
         # 임베딩
         self.embeddings = nn.Embedding(self.character_size, self.embedding_dim)
 
+        num_layers = 2
+        D = self.embedding_dim
+        H = self.embedding_dim
+        #da = max_length
+        #r = 10
+        self.lstm = nn.LSTM(D, H, num_layers, batch_first=False, bidirectional=True)
+        self.attn = nn.Linear(max_length * H*2, max_length)
+        self.attn_dist = nn.Softmax(dim=1)
+        #self.tanh = nn.Tanh()
+        #self.sigmoid = nn.Sigmoid()
+        #self.attn2 = nn.Linear(da, r, bias=False)
+        #self.attn_dist = nn.Softmax(dim=2)
+
         # 첫 번째 레이어
-        self.fc1 = nn.Linear(self.max_length * self.embedding_dim, 200)
+        #self.fc1 = nn.Linear(self.max_length * self.embedding_dim, 200)
+        self.fc = nn.Sequential(
+            nn.Linear(H*2, H),
+            nn.ReLU(),
+            nn.Linear(H, 1),
+        )
         # 두 번째 (아웃풋) 레이어
-        self.fc2 = nn.Linear(200, 1)
+        self.fc2 = nn.Linear(H, 1)
 
     def forward(self, data: list):
         """
@@ -130,13 +149,26 @@ class Regression(nn.Module):
             data_in_torch = data_in_torch.cuda()
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
-        hidden = self.fc1(embeds.view(batch_size, -1))
+        mask = (data_in_torch > 0).unsqueeze(-1).float()
+        embeds = embeds * mask
+        embeds = torch.transpose(embeds, 1, 0)
+        output, hn = self.lstm(embeds)
+        #last_h = torch.cat((hn[-2], hn[-1]), dim=1)
+        output = torch.transpose(output, 1, 0)
+        output = output * mask
+
+        attn = self.attn(output.view(batch_size, -1))
+        score = self.attn_dist(attn).unsqueeze(-1)
+        context = score * output
+        hidden = torch.sum(context, dim=1)
+
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
-        output = torch.sigmoid(self.fc2(hidden)) * 9 + 1
+        output = torch.sigmoid(self.fc(hidden)) * 9 + 1
         return output
 
 
 if __name__ == '__main__':
+    print('torch version:', torch.__version__)
     args = argparse.ArgumentParser()
     # DONOTCHANGE: They are reserved for nsml
     args.add_argument('--mode', type=str, default='train')
@@ -148,7 +180,7 @@ if __name__ == '__main__':
     args.add_argument('--epochs', type=int, default=10)
     args.add_argument('--batch', type=int, default=2000)
     args.add_argument('--strmaxlen', type=int, default=200)
-    args.add_argument('--embedding', type=int, default=8)
+    args.add_argument('--embedding', type=int, default=32)
     config = args.parse_args()
 
     if not HAS_DATASET and not IS_ON_NSML:  # It is not running on nsml
