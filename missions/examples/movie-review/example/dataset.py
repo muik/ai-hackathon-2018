@@ -76,7 +76,7 @@ def preprocess(data: list, max_length: int):
     :param max_length: 문자열의 최대 길이
     :return: 벡터 리스트 ([[0, 1, 5, 6], [5, 4, 10, 200], ...]) max_length가 4일 때
     """
-    vectorized_data = [decompose_str_as_one_hot(datum, warning=False) for datum in data]
+    vectorized_data = [decompose_str_as_one_hot(datum.strip(), warning=False) for datum in data]
     zero_padding = np.zeros((len(data), max_length), dtype=np.int32)
     for idx, seq in enumerate(vectorized_data):
         length = len(seq)
