@@ -114,15 +114,26 @@ class Regression(nn.Module):
         num_layers = 2
         D = self.embedding_dim
         H = self.embedding_dim
+        self.rnn_dim = H * num_layers
         #da = max_length
         #r = 10
         self.lstm = nn.LSTM(D, H, num_layers, batch_first=False, bidirectional=True)
-        self.attn = nn.Linear(max_length * H*2, max_length)
+        self.attn = nn.Sequential(
+            nn.Linear(max_length * H*2, max_length * H),
+            nn.Tanh(),
+            nn.Linear(max_length * H, max_length),
+        )
         self.attn_dist = nn.Softmax(dim=1)
         #self.tanh = nn.Tanh()
         #self.sigmoid = nn.Sigmoid()
         #self.attn2 = nn.Linear(da, r, bias=False)
-        #self.attn_dist = nn.Softmax(dim=2)
+
+        self.attention_matrix = nn.Sequential(
+            nn.Linear(H*2, H*2),
+            nn.Tanh(),
+            nn.Linear(H*2, 1),
+        )
+        self.attention_vector = nn.Softmax(dim=1)
 
         # 첫 번째 레이어
         #self.fc1 = nn.Linear(self.max_length * self.embedding_dim, 200)
@@ -157,9 +168,14 @@ class Regression(nn.Module):
         output = torch.transpose(output, 1, 0)
         output = output * mask
 
+        #attn_mat = self.attention_matrix(output)
+        #attn_vec = self.attention_vector(attn_mat.view(batch_size, -1))
+        #attn_vec = attn_vec.unsqueeze(2).expand(batch_size, self.max_length, self.rnn_dim)
+        #context = output * attn_vec
+
         attn = self.attn(output.view(batch_size, -1))
-        score = self.attn_dist(attn).unsqueeze(-1)
-        context = score * output
+        score = self.attn_dist(attn).unsqueeze(2).expand(batch_size, self.max_length, self.rnn_dim)
+        context = output * score
         hidden = torch.sum(context, dim=1)
 
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
@@ -182,6 +198,13 @@ if __name__ == '__main__':
     args.add_argument('--strmaxlen', type=int, default=200)
     args.add_argument('--embedding', type=int, default=32)
     config = args.parse_args()
+
+    if config.mode == 'train':
+        dropout_keep_prob = 0.5
+        is_training = True
+    else:
+        dropout_keep_prob = 1.0
+        is_training = False
 
     if not HAS_DATASET and not IS_ON_NSML:  # It is not running on nsml
         DATASET_PATH = '../sample_data/movie_review/'
@@ -214,6 +237,7 @@ if __name__ == '__main__':
         # epoch마다 학습을 수행합니다.
         for epoch in range(config.epochs):
             avg_loss = 0.0
+            avg_accuracy = 0.0
             for i, (data, labels) in enumerate(train_loader):
                 predictions = model(data)
                 label_vars = Variable(torch.from_numpy(labels))
@@ -226,14 +250,24 @@ if __name__ == '__main__':
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                print('Batch : ', i + 1, '/', total_batch,
-                      ', MSE in this minibatch: ', loss.data[0])
+
+                correct = label_vars.eq(torch.round(predictions.view(-1)))
+                accuracy = (correct.sum().data[0] / len(labels))
+
+                if i % 50 == 0:
+                    print('Batch : ', i + 1, '/', total_batch,
+                          ', MSE in this minibatch: ', round(loss.data[0], 3),
+                          ', Accuracy:', round(accuracy, 2))
                 avg_loss += loss.data[0]
-            print('epoch:', epoch, ' train_loss:', float(avg_loss/total_batch))
+                avg_accuracy += accuracy
+
+            accuracy = round(float(avg_accuracy / total_batch), 2)
+            print('epoch:', epoch, ' train_loss:', round(float(avg_loss/total_batch), 3),
+                    ' accuracy:', accuracy)
             # nsml ps, 혹은 웹 상의 텐서보드에 나타나는 값을 리포트하는 함수입니다.
             #
             nsml.report(summary=True, scope=locals(), epoch=epoch, epoch_total=config.epochs,
-                        train__loss=float(avg_loss/total_batch), step=epoch)
+                        train__loss=float(avg_loss/total_batch), step=epoch, accuracy=accuracy)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
 
