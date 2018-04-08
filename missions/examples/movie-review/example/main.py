@@ -98,7 +98,7 @@ class Regression(nn.Module):
     """
     영화리뷰 예측을 위한 Regression 모델입니다.
     """
-    def __init__(self, embedding_dim: int, max_length: int):
+    def __init__(self, embedding_dim: int, max_length: int, dropout_prob: float):
         """
         initializer
 
@@ -120,7 +120,8 @@ class Regression(nn.Module):
         self.rnn_dim = H * num_layers
         #da = max_length
         #r = 10
-        self.lstm = nn.LSTM(D, H, num_layers, batch_first=False, bidirectional=True)
+        self.lstm = nn.LSTM(D, H, num_layers, batch_first=False, bidirectional=True,
+                dropout=dropout_prob)
         self.attn = nn.Linear(max_length * H*2, max_length)
         self.attn_dist = nn.Softmax(dim=1)
         #self.tanh = nn.Tanh()
@@ -130,19 +131,18 @@ class Regression(nn.Module):
         self.attention_matrix = nn.Sequential(
             nn.Linear(H*2, H*2),
             nn.Tanh(),
+            nn.Dropout(p=dropout_prob),
             nn.Linear(H*2, 1),
         )
         self.attention_vector = nn.Softmax(dim=1)
 
         # 첫 번째 레이어
-        #self.fc1 = nn.Linear(self.max_length * self.embedding_dim, 200)
         self.fc = nn.Sequential(
-            nn.Linear(H*2*2, H),
+            nn.Linear(H*2, H),
             nn.ReLU(),
+            nn.Dropout(p=dropout_prob),
             nn.Linear(H, 1),
         )
-        # 두 번째 (아웃풋) 레이어
-        self.fc2 = nn.Linear(H, 1)
 
     def forward(self, data: list, lengths: list):
         """
@@ -169,14 +169,12 @@ class Regression(nn.Module):
         output = torch.transpose(output, 1, 0)
         output = output * mask
 
+        # https://github.com/wballard/mailscanner/blob/attention/mailscanner/layers/attention.py
         attn_mat = self.attention_matrix(output)
         attn_vec = self.attention_vector(attn_mat.view(batch_size, -1))
         attn_vec = attn_vec.unsqueeze(2).expand(batch_size, self.max_length, self.rnn_dim)
-
         context = output * attn_vec
-
         hidden = torch.sum(context, dim=1)
-        hidden = torch.cat((hidden, last_h), dim=1)
 
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
         output = torch.sigmoid(self.fc(hidden)) * 9 + 1
@@ -201,16 +199,16 @@ if __name__ == '__main__':
     config = args.parse_args()
 
     if config.mode == 'train':
-        dropout_keep_prob = 0.5
+        dropout_prob = 0.5
         is_training = True
     else:
-        dropout_keep_prob = 1.0
+        dropout_prob = 0.0
         is_training = False
 
     if not HAS_DATASET and not IS_ON_NSML:  # It is not running on nsml
         DATASET_PATH = '../sample_data/movie_review/'
 
-    model = Regression(config.embedding, config.strmaxlen)
+    model = Regression(config.embedding, config.strmaxlen, dropout_prob)
     if GPU_NUM:
         model = model.cuda()
 
