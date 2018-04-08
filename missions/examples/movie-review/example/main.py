@@ -118,15 +118,8 @@ class Regression(nn.Module):
         D = self.embedding_dim
         H = self.embedding_dim
         self.rnn_dim = H * num_layers
-        #da = max_length
-        #r = 10
         self.lstm = nn.LSTM(D, H, num_layers, batch_first=False, bidirectional=True,
                 dropout=dropout_prob)
-        self.attn = nn.Linear(max_length * H*2, max_length)
-        self.attn_dist = nn.Softmax(dim=1)
-        #self.tanh = nn.Tanh()
-        #self.sigmoid = nn.Sigmoid()
-        #self.attn2 = nn.Linear(da, r, bias=False)
 
         self.attention_matrix = nn.Sequential(
             nn.Linear(H*2, H*2),
