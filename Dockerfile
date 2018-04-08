@@ -8,5 +8,7 @@ ENV PATH="/client:$PATH"
 ENV PYTHONIOENCODING="UTF-8"
 
 RUN pip install keras
-RUN pip install http://download.pytorch.org/whl/cpu/torch-0.3.1-cp35-cp35m-linux_x86_64.whl
+RUN pip install http://download.pytorch.org/whl/cpu/torch-0.3.0.post4-cp35-cp35m-linux_x86_64.whl
 RUN pip install torchvision
+RUN pip install numpy==1.13.3
+RUN pip install pandas==0.20.3
