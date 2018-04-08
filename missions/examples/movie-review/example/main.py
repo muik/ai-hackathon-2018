@@ -98,7 +98,8 @@ class Regression(nn.Module):
     """
     영화리뷰 예측을 위한 Regression 모델입니다.
     """
-    def __init__(self, embedding_dim: int, max_length: int, dropout_prob: float):
+    def __init__(self, embedding_dim: int, max_length: int, dropout_prob: float,
+            rnn_layers: int):
         """
         initializer
 
@@ -114,11 +115,11 @@ class Regression(nn.Module):
         # 임베딩
         self.embeddings = nn.Embedding(self.character_size, self.embedding_dim)
 
-        self.num_layers = 2
+        self.num_layers = rnn_layers
         D = self.embedding_dim
         H = self.embedding_dim
         self.hidden_size = H
-        self.rnn_dim = H * self.num_layers
+        self.rnn_dim = H * 2
         self.lstm = nn.LSTM(D, H, self.num_layers, batch_first=False, bidirectional=True,
                 dropout=dropout_prob)
 
@@ -191,6 +192,7 @@ if __name__ == '__main__':
     args.add_argument('--strmaxlen', type=int, default=100)
     args.add_argument('--embedding', type=int, default=32)
     args.add_argument('--dropout', type=float, default=0.5)
+    args.add_argument('--rnn_layers', type=int, default=2)
     config = args.parse_args()
 
     if config.mode == 'train':
@@ -203,7 +205,8 @@ if __name__ == '__main__':
     if not HAS_DATASET and not IS_ON_NSML:  # It is not running on nsml
         DATASET_PATH = '../sample_data/movie_review/'
 
-    model = Regression(config.embedding, config.strmaxlen, dropout_prob)
+    model = Regression(config.embedding, config.strmaxlen, dropout_prob,
+            config.rnn_layers)
     if GPU_NUM:
         model = model.cuda()
 
