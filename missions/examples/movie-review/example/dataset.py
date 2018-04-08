@@ -22,6 +22,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import os
 
+import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset
 
@@ -39,13 +40,15 @@ class MovieReviewDataset(Dataset):
         :param dataset_path: 데이터셋 root path
         :param max_length: 문자열의 최대 길이
         """
+        print('pandas version:', pd.__version__)
+
         # 데이터, 레이블 각각의 경로
         data_review = os.path.join(dataset_path, 'train', 'train_data')
         data_label = os.path.join(dataset_path, 'train', 'train_label')
 
         # 영화리뷰 데이터를 읽고 preprocess까지 진행합니다
         with open(data_review, 'rt', encoding='utf-8') as f:
-            self.reviews = preprocess(f.readlines(), max_length)
+            self.reviews, self.lengths = preprocess(f.readlines(), max_length)
         # 영화리뷰 레이블을 읽고 preprocess까지 진행합니다.
         with open(data_label) as f:
             self.labels = [np.float32(x) for x in f.readlines()]
@@ -63,7 +66,7 @@ class MovieReviewDataset(Dataset):
         :param idx: 필요한 데이터의 인덱스
         :return: 인덱스에 맞는 데이터, 레이블 pair를 리턴합니다
         """
-        return self.reviews[idx], self.labels[idx]
+        return self.reviews[idx], self.lengths[idx], self.labels[idx]
 
 
 def preprocess(data: list, max_length: int):
@@ -77,6 +80,17 @@ def preprocess(data: list, max_length: int):
     :return: 벡터 리스트 ([[0, 1, 5, 6], [5, 4, 10, 200], ...]) max_length가 4일 때
     """
     vectorized_data = [decompose_str_as_one_hot(datum.strip(), warning=False) for datum in data]
+    vec_data_lengths = np.array([len(x) for x in vectorized_data])
+
+    # 아래코드 때문에 학습이 제대로 안된다. 알 수 없음
+    #sorted_index = np.argsort(-vec_data_lengths)
+    #vectorized_data = np.array(vectorized_data)[sorted_index]
+    #vec_data_lengths = vec_data_lengths[sorted_index]
+
+    # one hot length
+    #df = pd.DataFrame(data={'vectorized_data_length': vec_data_lengths})
+    #print(df.describe(percentiles=[0.95, 0.997]))
+
     zero_padding = np.zeros((len(data), max_length), dtype=np.int32)
     for idx, seq in enumerate(vectorized_data):
         length = len(seq)
@@ -85,4 +99,4 @@ def preprocess(data: list, max_length: int):
             zero_padding[idx, :length] = np.array(seq)[:length]
         else:
             zero_padding[idx, :length] = np.array(seq)
-    return zero_padding
+    return zero_padding, vec_data_lengths

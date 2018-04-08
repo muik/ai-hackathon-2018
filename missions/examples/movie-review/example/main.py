@@ -30,6 +30,7 @@ from torch.autograd import Variable
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+import torch.nn.functional as F
 
 import nsml
 from dataset import MovieReviewDataset, preprocess
@@ -60,10 +61,10 @@ def bind_model(model, config):
         :return:
         """
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
-        preprocessed_data = preprocess(raw_data, config.strmaxlen)
+        preprocessed_data, data_lengths = preprocess(raw_data, config.strmaxlen)
         model.eval()
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
-        output_prediction = model(preprocessed_data)
+        output_prediction = model(preprocessed_data, data_lengths)
         point = output_prediction.data.squeeze(dim=1).tolist()
         # DONOTCHANGE: They are reserved for nsml
         # 리턴 결과는 [(confidence interval, 포인트)] 의 형태로 보내야만 리더보드에 올릴 수 있습니다. 리더보드 결과에 confidence interval의 값은 영향을 미치지 않습니다
@@ -83,12 +84,14 @@ def collate_fn(data: list):
     :return:
     """
     review = []
+    length = []
     label = []
     for datum in data:
         review.append(datum[0])
-        label.append(datum[1])
+        length.append(datum[1])
+        label.append(datum[2])
     # 각각 데이터, 레이블을 리턴
-    return review, np.array(label)
+    return review, np.array(length), np.array(label)
 
 
 class Regression(nn.Module):
@@ -118,11 +121,7 @@ class Regression(nn.Module):
         #da = max_length
         #r = 10
         self.lstm = nn.LSTM(D, H, num_layers, batch_first=False, bidirectional=True)
-        self.attn = nn.Sequential(
-            nn.Linear(max_length * H*2, max_length * H),
-            nn.Tanh(),
-            nn.Linear(max_length * H, max_length),
-        )
+        self.attn = nn.Linear(max_length * H*2, max_length)
         self.attn_dist = nn.Softmax(dim=1)
         #self.tanh = nn.Tanh()
         #self.sigmoid = nn.Sigmoid()
@@ -138,14 +137,14 @@ class Regression(nn.Module):
         # 첫 번째 레이어
         #self.fc1 = nn.Linear(self.max_length * self.embedding_dim, 200)
         self.fc = nn.Sequential(
-            nn.Linear(H*2, H),
+            nn.Linear(H*2*2, H),
             nn.ReLU(),
             nn.Linear(H, 1),
         )
         # 두 번째 (아웃풋) 레이어
         self.fc2 = nn.Linear(H, 1)
 
-    def forward(self, data: list):
+    def forward(self, data: list, lengths: list):
         """
 
         :param data: 실제 입력값
@@ -155,28 +154,29 @@ class Regression(nn.Module):
         batch_size = len(data)
         # list로 받은 데이터를 torch Variable로 변환합니다.
         data_in_torch = Variable(torch.from_numpy(np.array(data)).long())
+
         # 만약 gpu를 사용중이라면, 데이터를 gpu 메모리로 보냅니다.
         if GPU_NUM:
             data_in_torch = data_in_torch.cuda()
+
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
         mask = (data_in_torch > 0).unsqueeze(-1).float()
         embeds = embeds * mask
         embeds = torch.transpose(embeds, 1, 0)
-        output, hn = self.lstm(embeds)
-        #last_h = torch.cat((hn[-2], hn[-1]), dim=1)
+        output, (hn, _) = self.lstm(embeds)
+        last_h = torch.cat((hn[-2], hn[-1]), dim=1)
         output = torch.transpose(output, 1, 0)
         output = output * mask
 
-        #attn_mat = self.attention_matrix(output)
-        #attn_vec = self.attention_vector(attn_mat.view(batch_size, -1))
-        #attn_vec = attn_vec.unsqueeze(2).expand(batch_size, self.max_length, self.rnn_dim)
-        #context = output * attn_vec
+        attn_mat = self.attention_matrix(output)
+        attn_vec = self.attention_vector(attn_mat.view(batch_size, -1))
+        attn_vec = attn_vec.unsqueeze(2).expand(batch_size, self.max_length, self.rnn_dim)
 
-        attn = self.attn(output.view(batch_size, -1))
-        score = self.attn_dist(attn).unsqueeze(2).expand(batch_size, self.max_length, self.rnn_dim)
-        context = output * score
+        context = output * attn_vec
+
         hidden = torch.sum(context, dim=1)
+        hidden = torch.cat((hidden, last_h), dim=1)
 
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
         output = torch.sigmoid(self.fc(hidden)) * 9 + 1
@@ -185,6 +185,7 @@ class Regression(nn.Module):
 
 if __name__ == '__main__':
     print('torch version:', torch.__version__)
+    print('numpy version:', np.__version__)
     args = argparse.ArgumentParser()
     # DONOTCHANGE: They are reserved for nsml
     args.add_argument('--mode', type=str, default='train')
@@ -194,8 +195,8 @@ if __name__ == '__main__':
     # User options
     args.add_argument('--output', type=int, default=1)
     args.add_argument('--epochs', type=int, default=10)
-    args.add_argument('--batch', type=int, default=2000)
-    args.add_argument('--strmaxlen', type=int, default=200)
+    args.add_argument('--batch', type=int, default=1000)
+    args.add_argument('--strmaxlen', type=int, default=100)
     args.add_argument('--embedding', type=int, default=32)
     config = args.parse_args()
 
@@ -238,8 +239,12 @@ if __name__ == '__main__':
         for epoch in range(config.epochs):
             avg_loss = 0.0
             avg_accuracy = 0.0
-            for i, (data, labels) in enumerate(train_loader):
-                predictions = model(data)
+            for i, (data, lengths, labels) in enumerate(train_loader):
+                #sorted_index = np.argsort(-lengths)
+                #data = np.array(data)[sorted_index]
+                #lengths = lengths[sorted_index]
+
+                predictions = model(data, lengths)
                 label_vars = Variable(torch.from_numpy(labels))
                 if GPU_NUM:
                     label_vars = label_vars.cuda()
@@ -254,7 +259,7 @@ if __name__ == '__main__':
                 correct = label_vars.eq(torch.round(predictions.view(-1)))
                 accuracy = (correct.sum().data[0] / len(labels))
 
-                if i % 50 == 0:
+                if i % 100 == 0:
                     print('Batch : ', i + 1, '/', total_batch,
                           ', MSE in this minibatch: ', round(loss.data[0], 3),
                           ', Accuracy:', round(accuracy, 2))
