@@ -114,25 +114,26 @@ class Regression(nn.Module):
         # 임베딩
         self.embeddings = nn.Embedding(self.character_size, self.embedding_dim)
 
-        num_layers = 2
+        self.num_layers = 2
         D = self.embedding_dim
         H = self.embedding_dim
-        self.rnn_dim = H * num_layers
-        self.lstm = nn.LSTM(D, H, num_layers, batch_first=False, bidirectional=True,
+        self.hidden_size = H
+        self.rnn_dim = H * self.num_layers
+        self.lstm = nn.LSTM(D, H, self.num_layers, batch_first=False, bidirectional=True,
                 dropout=dropout_prob)
 
         self.attention_matrix = nn.Sequential(
-            nn.Linear(H*2, H*2),
+            nn.Linear(H*2, H),
             nn.Tanh(),
             nn.Dropout(p=dropout_prob),
-            nn.Linear(H*2, 1),
+            nn.Linear(H, 1),
         )
         self.attention_vector = nn.Softmax(dim=1)
 
         # 첫 번째 레이어
         self.fc = nn.Sequential(
             nn.Linear(H*2, H),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Dropout(p=dropout_prob),
             nn.Linear(H, 1),
         )
@@ -189,10 +190,11 @@ if __name__ == '__main__':
     args.add_argument('--batch', type=int, default=1000)
     args.add_argument('--strmaxlen', type=int, default=100)
     args.add_argument('--embedding', type=int, default=32)
+    args.add_argument('--dropout', type=float, default=0.5)
     config = args.parse_args()
 
     if config.mode == 'train':
-        dropout_prob = 0.5
+        dropout_prob = config.dropout
         is_training = True
     else:
         dropout_prob = 0.0
