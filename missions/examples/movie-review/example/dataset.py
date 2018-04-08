@@ -82,11 +82,6 @@ def preprocess(data: list, max_length: int):
     vectorized_data = [decompose_str_as_one_hot(datum.strip(), warning=False) for datum in data]
     vec_data_lengths = np.array([len(x) for x in vectorized_data])
 
-    # 아래코드 때문에 학습이 제대로 안된다. 알 수 없음
-    #sorted_index = np.argsort(-vec_data_lengths)
-    #vectorized_data = np.array(vectorized_data)[sorted_index]
-    #vec_data_lengths = vec_data_lengths[sorted_index]
-
     # one hot length
     #df = pd.DataFrame(data={'vectorized_data_length': vec_data_lengths})
     #print(df.describe(percentiles=[0.95, 0.997]))

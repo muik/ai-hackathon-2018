@@ -238,6 +238,7 @@ if __name__ == '__main__':
             avg_loss = 0.0
             avg_accuracy = 0.0
             for i, (data, lengths, labels) in enumerate(train_loader):
+                # 아래코드 때문에 학습이 제대로 안된다. 알 수 없음
                 #sorted_index = np.argsort(-lengths)
                 #data = np.array(data)[sorted_index]
                 #lengths = lengths[sorted_index]
