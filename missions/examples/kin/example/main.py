@@ -30,7 +30,7 @@ from tensorflow.python.keras.layers import Bidirectional, LSTM
 from tensorflow.python.keras import backend as K
 
 import nsml
-from nsml import DATASET_PATH, HAS_DATASET, IS_ON_NSML
+from nsml import DATASET_PATH, HAS_DATASET, IS_ON_NSML, GPU_NUM
 from dataset import KinQueryDataset, preprocess
 from util import local_save, local_load
 
@@ -65,9 +65,11 @@ def bind_model(sess, config):
         """
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
         data1, data2, d1_len, d2_len = preprocess(raw_data, config.strmaxlen)
+
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
         pred = sess.run(output_sigmoid, feed_dict={
             x1: data1, x2: data2, x1_len: d1_len, x2_len: d2_len})
+
         clipped = np.array(pred > config.threshold, dtype=np.int)
         # DONOTCHANGE: They are reserved for nsml
         # 리턴 결과는 [(확률, 0 or 1)] 의 형태로 보내야만 리더보드에 올릴 수 있습니다. 리더보드 결과에 확률의 값은 영향을 미치지 않습니다
@@ -115,7 +117,6 @@ if __name__ == '__main__':
     args.add_argument('--strmaxlen', type=int, default=168)
     args.add_argument('--embedding', type=int, default=128)
     args.add_argument('--threshold', type=float, default=0.5)
-    args.add_argument('--use_gpu', action="store_true", default=False)
     config = args.parse_args()
 
     if config.mode == 'train':
@@ -125,7 +126,7 @@ if __name__ == '__main__':
         dropout_keep_prob = 1.0
         is_training = False
 
-    if config.use_gpu:
+    if GPU_NUM:
         base_cell=tf.contrib.cudnn_rnn.CudnnLSTM
     else:
         base_cell=tf.contrib.rnn.BasicLSTMCell
@@ -200,7 +201,7 @@ if __name__ == '__main__':
         embedded = embedded * mask
 
         with tf.variable_scope('sentence', reuse=reuse):
-            if config.use_gpu:
+            if GPU_NUM:
                 outputs = cudnn_rnn(embedded)
                 expaned_outputs = tf.reshape(outputs, [-1, config.strmaxlen*config.embedding*2])
             else:
@@ -308,9 +309,9 @@ if __name__ == '__main__':
                 data1, data2, d1_len, d2_len, labels = sess.run(next_element)
                 _, loss, p_loss, n_loss = sess.run([train_step, loss_op, pos_loss_op, neg_loss_op],
                         feed_dict={x1: data1, x2: data2, x1_len: d1_len, x2_len: d2_len, y_: labels})
-                if not config.use_gpu:
+                if not GPU_NUM:
                     print('Batch : ', i + 1, '/', one_batch_size,
-                          ', BCE in this minibatch: ', float(loss), float(p_loss), float(n_loss))
+                          ', BCE in this minibatch: ', round(float(loss), 3), float(p_loss), float(n_loss))
                 avg_loss += float(loss)
 
             sess.run(iterator.initializer)
@@ -326,7 +327,7 @@ if __name__ == '__main__':
 
             accuracy = np.mean(np.array(accuracies))
 
-            print('epoch:', epoch, ' train_loss:', float(avg_loss/one_batch_size),
+            print('epoch:', epoch, ' train_loss:', round(float(avg_loss/one_batch_size), 3),
                 'accuracy:', accuracy)
             nsml.report(summary=True, scope=locals(), epoch=epoch, epoch_total=config.epochs,
                         train__loss=float(avg_loss/one_batch_size), step=epoch,
