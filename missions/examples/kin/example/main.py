@@ -28,6 +28,8 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.keras.layers import Bidirectional, LSTM
 from tensorflow.python.keras import backend as K
+import fastText
+print('fastText:', fastText.FastText)
 
 import nsml
 from nsml import DATASET_PATH, HAS_DATASET, IS_ON_NSML
@@ -111,9 +113,9 @@ if __name__ == '__main__':
     # User options
     args.add_argument('--output', type=int, default=1)
     args.add_argument('--epochs', type=int, default=10)
-    args.add_argument('--batch', type=int, default=100)
+    args.add_argument('--batch', type=int, default=1000)
     args.add_argument('--strmaxlen', type=int, default=168)
-    args.add_argument('--embedding', type=int, default=128)
+    args.add_argument('--embedding', type=int, default=64)
     args.add_argument('--threshold', type=float, default=0.5)
     args.add_argument('--use_gpu', action="store_true", default=False)
     config = args.parse_args()
