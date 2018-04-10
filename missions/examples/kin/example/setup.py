@@ -1,4 +1,4 @@
-
+#nsml: muik/nsml:fasttext
 """
 Copyright 2018 NAVER Corp.
 
