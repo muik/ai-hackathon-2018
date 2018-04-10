@@ -25,6 +25,8 @@ import os
 import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset
+from torch.utils.data.sampler import SubsetRandomSampler
+from sklearn.model_selection import StratifiedShuffleSplit
 
 from kor_char_parser import decompose_str_as_one_hot
 
@@ -52,6 +54,22 @@ class MovieReviewDataset(Dataset):
         # 영화리뷰 레이블을 읽고 preprocess까지 진행합니다.
         with open(data_label) as f:
             self.labels = [np.float32(x) for x in f.readlines()]
+
+    def get_sampler(self):
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=0.25)
+        X = np.arange(len(self))
+        try:
+            train_index, eval_index = next(sss.split(X, self.labels))
+        except ValueError as e:
+            if not 'The least populated class in y has only ' in str(e):
+                raise e
+            from sklearn.model_selection import ShuffleSplit
+            sss = ShuffleSplit(n_splits=1, test_size=0.25)
+            train_index, eval_index = next(sss.split(X, self.labels))
+
+        train_sampler = SubsetRandomSampler(train_index)
+        eval_sampler = SubsetRandomSampler(eval_index)
+        return train_sampler, eval_sampler
 
     def __len__(self):
         """

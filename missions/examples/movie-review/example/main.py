@@ -225,12 +225,15 @@ if __name__ == '__main__':
     if config.mode == 'train':
         # 데이터를 로드합니다.
         dataset = MovieReviewDataset(DATASET_PATH, config.strmaxlen)
-        train_loader = DataLoader(dataset=dataset,
-                                  batch_size=config.batch,
-                                  shuffle=True,
-                                  collate_fn=collate_fn,
+        train_sampler, eval_sampler = dataset.get_sampler()
+        train_loader = DataLoader(dataset=dataset, batch_size=config.batch,
+                                  sampler=train_sampler, collate_fn=collate_fn,
+                                  num_workers=2)
+        eval_loader = DataLoader(dataset=dataset, batch_size=max(config.batch, 5000),
+                                  sampler=eval_sampler, collate_fn=collate_fn,
                                   num_workers=2)
         total_batch = len(train_loader)
+
         # epoch마다 학습을 수행합니다.
         for epoch in range(config.epochs):
             avg_loss = 0.0
@@ -256,20 +259,37 @@ if __name__ == '__main__':
                 correct = label_vars.eq(torch.round(predictions.view(-1)))
                 accuracy = (correct.sum().data[0] / len(labels))
 
-                if i % 100 == 0:
+                if i % 200 == 0:
                     print('Batch : ', i + 1, '/', total_batch,
                           ', MSE in this minibatch: ', round(loss.data[0], 3),
                           ', Accuracy:', round(accuracy, 2))
                 avg_loss += loss.data[0]
                 avg_accuracy += accuracy
 
-            accuracy = round(float(avg_accuracy / total_batch), 2)
-            print('epoch:', epoch, ' train_loss:', round(float(avg_loss/total_batch), 3),
-                    ' accuracy:', accuracy)
+            train_accuracy = float(avg_accuracy / total_batch)
+            train_loss = float(avg_loss/total_batch)
+            print('epoch:', epoch, 'train_loss: %.3f' % train_loss, 'accuracy: %.2f' % train_accuracy)
+
+            # Evaluation
+            (data, lengths, labels) = next(iter(eval_loader))
+            predictions = model(data, lengths)
+            label_vars = Variable(torch.from_numpy(labels))
+            if GPU_NUM:
+                label_vars = label_vars.cuda()
+            loss = criterion(predictions, label_vars)
+            if GPU_NUM:
+                loss = loss.cuda()
+
+            correct = label_vars.eq(torch.round(predictions.view(-1)))
+            eval_accuracy = (correct.sum().data[0] / len(labels))
+            eval_loss = loss.data[0]
+            print('\t  eval_loss: %.3f' % eval_loss, 'accuracy: %.2f' % eval_accuracy)
+
             # nsml ps, 혹은 웹 상의 텐서보드에 나타나는 값을 리포트하는 함수입니다.
-            #
             nsml.report(summary=True, scope=locals(), epoch=epoch, epoch_total=config.epochs,
-                        train__loss=float(avg_loss/total_batch), step=epoch, accuracy=accuracy)
+                        train__loss=train_loss, train_accuracy=train_accuracy,
+                        eval__loss=eval_loss, eval_accuracy=eval_accuracy,
+                        step=epoch)
             # DONOTCHANGE (You can decide how often you want to save the model)
             nsml.save(epoch)
 
