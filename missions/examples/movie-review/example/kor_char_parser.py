@@ -100,7 +100,7 @@ def decompose_str(string):
     return ''.join([decompose(ord(x)) for x in string])
 
 
-def decompose_str_as_one_hot(string, warning=True):
+def decompose_str_as_one_hot(string, warning=False):
     tmp_list = []
     for x in string:
         da = decompose_as_one_hot(ord(x), warning=warning)

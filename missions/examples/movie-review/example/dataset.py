@@ -22,6 +22,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import os
 import time
+from multiprocessing import Pool
 
 import pandas as pd
 import numpy as np
@@ -88,7 +89,6 @@ class MovieReviewDataset(Dataset):
         """
         return self.reviews[idx], self.lengths[idx], self.labels[idx]
 
-
 def preprocess(data: list, max_length: int):
     """
      입력을 받아서 딥러닝 모델이 학습 가능한 포맷으로 변경하는 함수입니다.
@@ -100,7 +100,8 @@ def preprocess(data: list, max_length: int):
     :return: 벡터 리스트 ([[0, 1, 5, 6], [5, 4, 10, 200], ...]) max_length가 4일 때
     """
     t0 = time.time()
-    vectorized_data = [decompose_str_as_one_hot(datum.strip(), warning=False) for datum in data]
+    with Pool(12) as p:
+        vectorized_data = p.map(decompose_str_as_one_hot, [datum.strip() for datum in data])
     print("vectorized_data loaded %.2f s" % (time.time() - t0))
     vec_data_lengths = np.array([len(x) for x in vectorized_data])
 
