@@ -26,6 +26,7 @@ import os
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.client import device_lib
 from tensorflow.python.keras.layers import Bidirectional, LSTM
 from tensorflow.python.keras import backend as K
 import fastText
@@ -35,6 +36,14 @@ import nsml
 from nsml import DATASET_PATH, HAS_DATASET, IS_ON_NSML, GPU_NUM
 from dataset import KinQueryDataset, preprocess
 from util import local_save, local_load
+
+def get_available_gpus():
+    local_device_protos = device_lib.list_local_devices()
+    return [x.name for x in local_device_protos if x.device_type == 'GPU']
+
+USE_GPU = GPU_NUM or len(get_available_gpus())
+if USE_GPU:
+    print("using %d GPUs" % USE_GPU)
 
 # DONOTCHANGE: They are reserved for nsml
 # This is for nsml leaderboard
@@ -128,7 +137,7 @@ if __name__ == '__main__':
         dropout_keep_prob = 1.0
         is_training = False
 
-    if GPU_NUM:
+    if USE_GPU:
         base_cell=tf.contrib.cudnn_rnn.CudnnLSTM
     else:
         base_cell=tf.contrib.rnn.BasicLSTMCell
@@ -203,7 +212,7 @@ if __name__ == '__main__':
         embedded = embedded * mask
 
         with tf.variable_scope('sentence', reuse=reuse):
-            if GPU_NUM:
+            if USE_GPU:
                 outputs = cudnn_rnn(embedded)
                 expaned_outputs = tf.reshape(outputs, [-1, config.strmaxlen*config.embedding*2])
             else:
@@ -280,6 +289,7 @@ if __name__ == '__main__':
 
     accuracy_op, accuracy_updates = tf.metrics.accuracy(y_target, prediction)
 
+    #sess = tf.InteractiveSession(config=tf.ConfigProto(log_device_placement=True))
     sess = tf.InteractiveSession()
     tf.global_variables_initializer().run()
     tf.local_variables_initializer().run()
@@ -311,7 +321,7 @@ if __name__ == '__main__':
                 data1, data2, d1_len, d2_len, labels = sess.run(next_element)
                 _, loss, p_loss, n_loss = sess.run([train_step, loss_op, pos_loss_op, neg_loss_op],
                         feed_dict={x1: data1, x2: data2, x1_len: d1_len, x2_len: d2_len, y_: labels})
-                if not GPU_NUM:
+                if not USE_GPU:
                     print('Batch : ', i + 1, '/', one_batch_size,
                           ', BCE in this minibatch: ', round(float(loss), 3), float(p_loss), float(n_loss))
                 avg_loss += float(loss)
@@ -351,7 +361,7 @@ if __name__ == '__main__':
         res = []
         for batch in _batch_loader(queries, config.batch):
             batch_size = len(batch)
-            if config.use_gpu and batch_size < config.batch:
+            if USE_GPU and batch_size < config.batch:
                 batch += [".\t."] * (config.batch - batch_size)
                 temp_res = nsml.infer(batch)[:batch_size]
             else:

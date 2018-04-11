@@ -36,6 +36,9 @@ import nsml
 from dataset import MovieReviewDataset, preprocess
 from nsml import DATASET_PATH, HAS_DATASET, GPU_NUM, IS_ON_NSML
 
+USE_GPU = GPU_NUM or torch.cuda.device_count()
+if USE_GPU:
+    print("using %d GPUs" % USE_GPU)
 
 # DONOTCHANGE: They are reserved for nsml
 # This is for nsml leaderboard
@@ -151,7 +154,7 @@ class Regression(nn.Module):
         data_in_torch = Variable(torch.from_numpy(np.array(data)).long())
 
         # 만약 gpu를 사용중이라면, 데이터를 gpu 메모리로 보냅니다.
-        if GPU_NUM:
+        if USE_GPU:
             data_in_torch = data_in_torch.cuda()
 
         # 뉴럴네트워크를 지나 결과를 출력합니다.
@@ -207,7 +210,7 @@ if __name__ == '__main__':
 
     model = Regression(config.embedding, config.strmaxlen, dropout_prob,
             config.rnn_layers)
-    if GPU_NUM:
+    if USE_GPU:
         model = model.cuda()
 
     # DONOTCHANGE: Reserved for nsml use
@@ -246,10 +249,10 @@ if __name__ == '__main__':
 
                 predictions = model(data, lengths)
                 label_vars = Variable(torch.from_numpy(labels))
-                if GPU_NUM:
+                if USE_GPU:
                     label_vars = label_vars.cuda()
                 loss = criterion(predictions, label_vars)
-                if GPU_NUM:
+                if USE_GPU:
                     loss = loss.cuda()
 
                 optimizer.zero_grad()
@@ -274,10 +277,10 @@ if __name__ == '__main__':
             (data, lengths, labels) = next(iter(eval_loader))
             predictions = model(data, lengths)
             label_vars = Variable(torch.from_numpy(labels))
-            if GPU_NUM:
+            if USE_GPU:
                 label_vars = label_vars.cuda()
             loss = criterion(predictions, label_vars)
-            if GPU_NUM:
+            if USE_GPU:
                 loss = loss.cuda()
 
             correct = label_vars.eq(torch.round(predictions.view(-1)))
