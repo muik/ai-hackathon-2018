@@ -22,6 +22,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import argparse
 import os
+import time
 
 import numpy as np
 import torch
@@ -211,6 +212,8 @@ if __name__ == '__main__':
     model = Regression(config.embedding, config.strmaxlen, dropout_prob,
             config.rnn_layers)
     if USE_GPU:
+        #if USE_GPU > 1:
+        #    model = nn.DataParallel(model)
         model = model.cuda()
 
     # DONOTCHANGE: Reserved for nsml use
@@ -227,7 +230,9 @@ if __name__ == '__main__':
     # 학습 모드일 때 사용합니다. (기본값)
     if config.mode == 'train':
         # 데이터를 로드합니다.
+        t0 = time.time()
         dataset = MovieReviewDataset(DATASET_PATH, config.strmaxlen)
+        print("dataset loaded %.2f s" % (time.time() - t0))
         train_sampler, eval_sampler = dataset.get_sampler()
         train_loader = DataLoader(dataset=dataset, batch_size=config.batch,
                                   sampler=train_sampler, collate_fn=collate_fn,

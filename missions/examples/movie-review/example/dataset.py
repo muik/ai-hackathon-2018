@@ -21,6 +21,7 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 import os
+import time
 
 import pandas as pd
 import numpy as np
@@ -51,6 +52,7 @@ class MovieReviewDataset(Dataset):
         # 영화리뷰 데이터를 읽고 preprocess까지 진행합니다
         with open(data_review, 'rt', encoding='utf-8') as f:
             self.reviews, self.lengths = preprocess(f.readlines(), max_length)
+
         # 영화리뷰 레이블을 읽고 preprocess까지 진행합니다.
         with open(data_label) as f:
             self.labels = [np.float32(x) for x in f.readlines()]
@@ -97,7 +99,9 @@ def preprocess(data: list, max_length: int):
     :param max_length: 문자열의 최대 길이
     :return: 벡터 리스트 ([[0, 1, 5, 6], [5, 4, 10, 200], ...]) max_length가 4일 때
     """
+    t0 = time.time()
     vectorized_data = [decompose_str_as_one_hot(datum.strip(), warning=False) for datum in data]
+    print("vectorized_data loaded %.2f s" % (time.time() - t0))
     vec_data_lengths = np.array([len(x) for x in vectorized_data])
 
     # one hot length
