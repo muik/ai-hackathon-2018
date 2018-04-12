@@ -142,6 +142,10 @@ class Regression(nn.Module):
             nn.Dropout(p=dropout_prob),
             nn.Linear(H, 1),
         )
+
+        self.embeddings = nn.DataParallel(self.embeddings)
+        self.attention_matrix = nn.DataParallel(self.attention_matrix)
+        self.attention_vector = nn.DataParallel(self.attention_vector)
         self.fc = nn.DataParallel(self.fc)
 
     def forward(self, data: list, lengths: list):
@@ -170,7 +174,7 @@ class Regression(nn.Module):
         mask = (data_in_torch > 0).unsqueeze(-1).float()
         embeds = embeds * mask
         embeds = torch.transpose(embeds, 1, 0)
-        self.lstm.flatten_parameters()
+        #self.lstm.flatten_parameters()
         output, (hn, _) = self.lstm(embeds, (h0, c0))
         last_h = torch.cat((hn[-2], hn[-1]), dim=1)
         output = torch.transpose(output, 1, 0)
@@ -262,6 +266,7 @@ if __name__ == '__main__':
             avg_loss = 0.0
             avg_accuracy = 0.0
             t0 = time.time()
+            t1 = time.time()
             for i, (data, lengths, labels) in enumerate(train_loader):
                 # 아래코드 때문에 학습이 제대로 안된다. 알 수 없음
                 #sorted_index = np.argsort(-lengths)
@@ -293,12 +298,14 @@ if __name__ == '__main__':
 
             train_accuracy = float(avg_accuracy / total_batch)
             train_loss = float(avg_loss/total_batch)
-            print('epoch:', epoch, 'train_loss: %.3f' % train_loss, 'accuracy: %.2f' % train_accuracy)
+            print('epoch:', epoch, 'train_loss: %.3f' % train_loss, 'accuracy: %.2f' % train_accuracy,
+                'time: %.2f' % (time.time() - t1))
 
             # Evaluation
             avg_loss = 0.0
             avg_accuracy = 0.0
             t0 = time.time()
+            t1 = time.time()
             for i, (data, lengths, labels) in enumerate(eval_loader):
                 predictions = model(data, lengths)
                 label_vars = Variable(torch.from_numpy(labels))
@@ -321,7 +328,8 @@ if __name__ == '__main__':
 
             eval_accuracy = float(avg_accuracy / total_eval_batch)
             eval_loss = float(avg_loss/total_eval_batch)
-            print('\t  eval_loss: %.3f' % eval_loss, 'accuracy: %.2f' % eval_accuracy)
+            print('\t  eval_loss: %.3f' % eval_loss, 'accuracy: %.2f' % eval_accuracy,
+                'time: %.2f' % (time.time() - t1))
 
             # nsml ps, 혹은 웹 상의 텐서보드에 나타나는 값을 리포트하는 함수입니다.
             nsml.report(summary=True, scope=locals(), epoch=epoch, epoch_total=config.epochs,
