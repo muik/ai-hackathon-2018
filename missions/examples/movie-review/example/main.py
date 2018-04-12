@@ -142,6 +142,7 @@ class Regression(nn.Module):
             nn.Dropout(p=dropout_prob),
             nn.Linear(H, 1),
         )
+        self.fc = nn.DataParallel(self.fc)
 
     def forward(self, data: list, lengths: list):
         """
@@ -154,16 +155,23 @@ class Regression(nn.Module):
         # list로 받은 데이터를 torch Variable로 변환합니다.
         data_in_torch = Variable(torch.from_numpy(np.array(data)).long())
 
+        # Set initial states
+        h0 = Variable(torch.zeros(self.num_layers*2, data_in_torch.size(0), self.hidden_size))
+        c0 = Variable(torch.zeros(self.num_layers*2, data_in_torch.size(0), self.hidden_size))
+
         # 만약 gpu를 사용중이라면, 데이터를 gpu 메모리로 보냅니다.
         if USE_GPU:
             data_in_torch = data_in_torch.cuda()
+            h0 = h0.cuda()
+            c0 = c0.cuda()
 
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
         mask = (data_in_torch > 0).unsqueeze(-1).float()
         embeds = embeds * mask
         embeds = torch.transpose(embeds, 1, 0)
-        output, (hn, _) = self.lstm(embeds)
+        self.lstm.flatten_parameters()
+        output, (hn, _) = self.lstm(embeds, (h0, c0))
         last_h = torch.cat((hn[-2], hn[-1]), dim=1)
         output = torch.transpose(output, 1, 0)
         output = output * mask
@@ -234,18 +242,26 @@ if __name__ == '__main__':
         dataset = MovieReviewDataset(DATASET_PATH, config.strmaxlen)
         print("dataset loaded %.2f s" % (time.time() - t0))
         train_sampler, eval_sampler = dataset.get_sampler()
+        if USE_GPU:
+            pin_memory = True
+        else:
+            pin_memory = False
         train_loader = DataLoader(dataset=dataset, batch_size=config.batch,
                                   sampler=train_sampler, collate_fn=collate_fn,
-                                  num_workers=2)
-        eval_loader = DataLoader(dataset=dataset, batch_size=max(config.batch, 5000),
+                                  num_workers=2, pin_memory=pin_memory)
+        eval_loader = DataLoader(dataset=dataset, batch_size=config.batch,
                                   sampler=eval_sampler, collate_fn=collate_fn,
-                                  num_workers=2)
+                                  num_workers=2, pin_memory=pin_memory)
         total_batch = len(train_loader)
+        total_eval_batch = len(eval_loader)
+        print("total batch:", total_batch)
+        print("total eval batch:", total_eval_batch)
 
         # epoch마다 학습을 수행합니다.
         for epoch in range(config.epochs):
             avg_loss = 0.0
             avg_accuracy = 0.0
+            t0 = time.time()
             for i, (data, lengths, labels) in enumerate(train_loader):
                 # 아래코드 때문에 학습이 제대로 안된다. 알 수 없음
                 #sorted_index = np.argsort(-lengths)
@@ -266,31 +282,45 @@ if __name__ == '__main__':
 
                 correct = label_vars.eq(torch.round(predictions.view(-1)))
                 accuracy = (correct.sum().data[0] / len(labels))
-
-                if i % 200 == 0:
-                    print('Batch : ', i + 1, '/', total_batch,
-                          ', MSE in this minibatch: ', round(loss.data[0], 3),
-                          ', Accuracy:', round(accuracy, 2))
                 avg_loss += loss.data[0]
                 avg_accuracy += accuracy
+
+                if (i+1) % 200 == 0:
+                    print('Batch : ', i + 1, '/', total_batch,
+                          ', MSE in this minibatch: ', round(loss.data[0], 3),
+                          ', Accuracy:', round(accuracy, 2), ', time: %.2f' % (time.time() - t0))
+                    t0 = time.time()
 
             train_accuracy = float(avg_accuracy / total_batch)
             train_loss = float(avg_loss/total_batch)
             print('epoch:', epoch, 'train_loss: %.3f' % train_loss, 'accuracy: %.2f' % train_accuracy)
 
             # Evaluation
-            (data, lengths, labels) = next(iter(eval_loader))
-            predictions = model(data, lengths)
-            label_vars = Variable(torch.from_numpy(labels))
-            if USE_GPU:
-                label_vars = label_vars.cuda()
-            loss = criterion(predictions, label_vars)
-            if USE_GPU:
-                loss = loss.cuda()
+            avg_loss = 0.0
+            avg_accuracy = 0.0
+            t0 = time.time()
+            for i, (data, lengths, labels) in enumerate(eval_loader):
+                predictions = model(data, lengths)
+                label_vars = Variable(torch.from_numpy(labels))
+                if USE_GPU:
+                    label_vars = label_vars.cuda()
+                loss = criterion(predictions, label_vars)
+                if USE_GPU:
+                    loss = loss.cuda()
 
-            correct = label_vars.eq(torch.round(predictions.view(-1)))
-            eval_accuracy = (correct.sum().data[0] / len(labels))
-            eval_loss = loss.data[0]
+                correct = label_vars.eq(torch.round(predictions.view(-1)))
+                accuracy = (correct.sum().data[0] / len(labels))
+                avg_loss += loss.data[0]
+                avg_accuracy += accuracy
+
+                if (i+1) % 200 == 0:
+                    print('Batch : ', i + 1, '/', total_batch,
+                          ', MSE in this minibatch: ', round(loss.data[0], 3),
+                          ', Accuracy:', round(accuracy, 2), ', time: %.2f' % (time.time() - t0))
+                    t0 = time.time()
+
+            eval_accuracy = float(avg_accuracy / total_eval_batch)
+            eval_loss = float(avg_loss/total_eval_batch)
             print('\t  eval_loss: %.3f' % eval_loss, 'accuracy: %.2f' % eval_accuracy)
 
             # nsml ps, 혹은 웹 상의 텐서보드에 나타나는 값을 리포트하는 함수입니다.
