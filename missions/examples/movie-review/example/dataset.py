@@ -56,7 +56,7 @@ class MovieReviewDataset(Dataset):
 
         # 영화리뷰 레이블을 읽고 preprocess까지 진행합니다.
         with open(data_label) as f:
-            self.labels = [np.float32(x) for x in f.readlines()]
+            self.labels = [np.float32(x.strip()) for x in f.readlines()]
 
     def get_sampler(self):
         sss = StratifiedShuffleSplit(n_splits=1, test_size=0.25)
