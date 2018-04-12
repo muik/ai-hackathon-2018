@@ -56,7 +56,7 @@ class MovieReviewDataset(Dataset):
 
         # 영화리뷰 레이블을 읽고 preprocess까지 진행합니다.
         with open(data_label) as f:
-            self.labels = [np.float32(x) for x in f.readlines()]
+            self.labels = [np.float32(x.rstrip()) for x in f.readlines()]
 
     def get_sampler(self):
         sss = StratifiedShuffleSplit(n_splits=1, test_size=0.25)
@@ -103,13 +103,16 @@ def preprocess(data: list, max_length: int):
     with Pool(12) as p:
         vectorized_data = p.map(decompose_str_as_one_hot, [datum.strip() for datum in data])
     print("vectorized_data loaded %.2f s" % (time.time() - t0))
-    vec_data_lengths = np.array([len(x) for x in vectorized_data])
 
     # one hot length
     #df = pd.DataFrame(data={'vectorized_data_length': vec_data_lengths})
     #print(df.describe(percentiles=[0.95, 0.997]))
 
-    zero_padding = np.zeros((len(data), max_length), dtype=np.int32)
+    t0 = time.time()
+    total_count = len(data)
+    zero_padding = np.zeros((total_count, max_length), dtype=np.int32)
+    vec_data_lengths = np.zeros((total_count), dtype=np.int32)
+
     for idx, seq in enumerate(vectorized_data):
         length = len(seq)
         if length >= max_length:
@@ -117,4 +120,6 @@ def preprocess(data: list, max_length: int):
             zero_padding[idx, :length] = np.array(seq)[:length]
         else:
             zero_padding[idx, :length] = np.array(seq)
+        vec_data_lengths[idx] = length
+    print("zero_padding loaded %.2f s" % (time.time() - t0))
     return zero_padding, vec_data_lengths
