@@ -25,7 +25,7 @@ class Regression(nn.Module):
         self.max_length = max_length
 
         # 임베딩
-        self.embeddings = nn.Embedding(self.character_size, self.embedding_dim)
+        self.embeddings = nn.Embedding(self.character_size, self.embedding_dim, padding_idx=0)
 
         self.num_layers = rnn_layers
         D = self.embedding_dim
