@@ -32,6 +32,12 @@ from sklearn.model_selection import StratifiedShuffleSplit
 
 from kor_char_parser import decompose_str_as_one_hot
 
+def group_count(name, items):
+    df = pd.DataFrame(data={name: items})
+    df = df.groupby([name]).size().reset_index(name='counts')
+    total = len(items)
+    df['percent'] = df['counts'].apply(lambda x: round(x * 100 / total, 1))
+    return df
 
 class MovieReviewDataset(Dataset):
     """
@@ -59,6 +65,9 @@ class MovieReviewDataset(Dataset):
         # 영화리뷰 레이블을 읽고 preprocess까지 진행합니다.
         with open(data_label) as f:
             self.labels = [np.float32(x.rstrip()) for x in f.readlines()[:max_size]]
+
+        # 라벨별 비중
+        #print(group_count('label', self.labels))
 
     def get_sampler(self):
         test_size = 0.2

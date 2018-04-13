@@ -34,7 +34,7 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch.nn.functional as F
 
 import nsml
-from dataset import MovieReviewDataset, preprocess
+from dataset import MovieReviewDataset, preprocess, group_count
 from nsml import DATASET_PATH, HAS_DATASET, GPU_NUM, IS_ON_NSML
 
 from models import Regression
@@ -215,6 +215,9 @@ if __name__ == '__main__':
                           ', Accuracy:', round(accuracy, 2), ', time: %.2f' % (time.time() - t0))
                     t0 = time.time()
 
+            print(group_count('label', labels))
+            print(group_count('prediction', torch.round(predictions.view(-1)).data.tolist()))
+
             train_accuracy = float(avg_accuracy / total_batch)
             train_loss = float(avg_loss/total_batch)
             print('epoch:', epoch, 'train_loss: %.3f' % train_loss, 'accuracy: %.2f' % train_accuracy,
@@ -267,6 +270,6 @@ if __name__ == '__main__':
     # [(0.0, 9.045), (0.0, 5.91), ... ]
     elif config.mode == 'test_local':
         with open(os.path.join(DATASET_PATH, 'train/train_data'), 'rt', encoding='utf-8') as f:
-            reviews = f.readlines()
+            reviews = f.readlines()[:config.max_dataset]
         res = nsml.infer(reviews)
         print(res)
