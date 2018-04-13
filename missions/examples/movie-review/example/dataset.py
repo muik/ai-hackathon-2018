@@ -61,7 +61,8 @@ class MovieReviewDataset(Dataset):
             self.labels = [np.float32(x.rstrip()) for x in f.readlines()[:max_size]]
 
     def get_sampler(self):
-        sss = StratifiedShuffleSplit(n_splits=1, test_size=0.2)
+        test_size = 0.2
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=test_size)
         X = np.arange(len(self))
         try:
             train_index, eval_index = next(sss.split(X, self.labels))
@@ -70,7 +71,7 @@ class MovieReviewDataset(Dataset):
                 raise e
             print('Use just ShuffleSplit')
             from sklearn.model_selection import ShuffleSplit
-            sss = ShuffleSplit(n_splits=1, test_size=0.25)
+            sss = ShuffleSplit(n_splits=1, test_size=test_size)
             train_index, eval_index = next(sss.split(X, self.labels))
 
         train_sampler = SubsetRandomSampler(train_index)
