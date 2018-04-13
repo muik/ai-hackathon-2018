@@ -37,7 +37,7 @@ class MovieReviewDataset(Dataset):
     """
     영화리뷰 데이터를 읽어서, tuple (데이터, 레이블)의 형태로 리턴하는 파이썬 오브젝트 입니다.
     """
-    def __init__(self, dataset_path: str, max_length: int):
+    def __init__(self, dataset_path: str, max_length: int, max_size=-1):
         """
         initializer
 
@@ -45,7 +45,8 @@ class MovieReviewDataset(Dataset):
         :param max_length: 문자열의 최대 길이
         """
         print('pandas version:', pd.__version__)
-        max_size = 100000000
+        if max_size > -1:
+            print('max dataset size:', max_size)
 
         # 데이터, 레이블 각각의 경로
         data_review = os.path.join(dataset_path, 'train', 'train_data')
@@ -60,13 +61,14 @@ class MovieReviewDataset(Dataset):
             self.labels = [np.float32(x.rstrip()) for x in f.readlines()[:max_size]]
 
     def get_sampler(self):
-        sss = StratifiedShuffleSplit(n_splits=1, test_size=0.25)
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=0.2)
         X = np.arange(len(self))
         try:
             train_index, eval_index = next(sss.split(X, self.labels))
         except ValueError as e:
             if not 'The least populated class in y has only ' in str(e):
                 raise e
+            print('Use just ShuffleSplit')
             from sklearn.model_selection import ShuffleSplit
             sss = ShuffleSplit(n_splits=1, test_size=0.25)
             train_index, eval_index = next(sss.split(X, self.labels))

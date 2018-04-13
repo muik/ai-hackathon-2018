@@ -10,7 +10,7 @@ class Regression(nn.Module):
     영화리뷰 예측을 위한 Regression 모델입니다.
     """
     def __init__(self, embedding_dim: int, max_length: int, dropout_prob: float,
-            rnn_layers: int, use_gpu: bool):
+            rnn_layers: int, use_gpu: bool, model_type: str):
         """
         initializer
 
@@ -50,7 +50,9 @@ class Regression(nn.Module):
             nn.Dropout(p=dropout_prob),
             nn.Linear(H, 1),
         )
-        self.fc = nn.DataParallel(self.fc)
+
+        self.model_type = model_type
+        print('model type:', self.model_type)
 
     def forward(self, data: list, lengths: list):
         """
@@ -77,21 +79,24 @@ class Regression(nn.Module):
 
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
-        mask = (data_in_torch > 0).unsqueeze(-1).float()
-        embeds = embeds * mask
         embeds = torch.transpose(embeds, 1, 0)
-        self.lstm.flatten_parameters()
         output, (hn, _) = self.lstm(embeds, (h0, c0))
         last_h = torch.cat((hn[-2], hn[-1]), dim=1)
         output = torch.transpose(output, 1, 0)
-        output = output * mask
+        #mask = (data_in_torch > 0).unsqueeze(-1).float()
+        #output = output * mask
 
-        # https://github.com/wballard/mailscanner/blob/attention/mailscanner/layers/attention.py
-        attn_mat = self.attention_matrix(output)
-        attn_vec = self.attention_vector(attn_mat.view(batch_size, -1))
-        attn_vec = attn_vec.unsqueeze(2).expand(batch_size, self.max_length, self.rnn_dim)
-        context = output * attn_vec
-        hidden = torch.sum(context, dim=1)
+        if self.model_type == 'last':
+            hidden = last_h
+        elif self.model_type == 'max':
+            hidden, idx = torch.max(output, 1)
+        else:
+            # https://github.com/wballard/mailscanner/blob/attention/mailscanner/layers/attention.py
+            attn_mat = self.attention_matrix(output)
+            attn_vec = self.attention_vector(attn_mat.view(batch_size, -1))
+            attn_vec = attn_vec.unsqueeze(2).expand(batch_size, self.max_length, self.rnn_dim)
+            context = output * attn_vec
+            hidden = torch.sum(context, dim=1)
 
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
         output = torch.sigmoid(self.fc(hidden)) * 9 + 1
