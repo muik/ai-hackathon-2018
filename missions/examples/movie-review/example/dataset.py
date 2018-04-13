@@ -45,6 +45,7 @@ class MovieReviewDataset(Dataset):
         :param max_length: 문자열의 최대 길이
         """
         print('pandas version:', pd.__version__)
+        max_size = 100000000
 
         # 데이터, 레이블 각각의 경로
         data_review = os.path.join(dataset_path, 'train', 'train_data')
@@ -52,11 +53,11 @@ class MovieReviewDataset(Dataset):
 
         # 영화리뷰 데이터를 읽고 preprocess까지 진행합니다
         with open(data_review, 'rt', encoding='utf-8') as f:
-            self.reviews, self.lengths = preprocess(f.readlines(), max_length)
+            self.reviews, self.lengths = preprocess(f.readlines()[:max_size], max_length)
 
         # 영화리뷰 레이블을 읽고 preprocess까지 진행합니다.
         with open(data_label) as f:
-            self.labels = [np.float32(x.rstrip()) for x in f.readlines()]
+            self.labels = [np.float32(x.rstrip()) for x in f.readlines()[:max_size]]
 
     def get_sampler(self):
         sss = StratifiedShuffleSplit(n_splits=1, test_size=0.25)

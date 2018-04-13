@@ -37,7 +37,7 @@ import nsml
 from dataset import MovieReviewDataset, preprocess
 from nsml import DATASET_PATH, HAS_DATASET, GPU_NUM, IS_ON_NSML
 
-USE_GPU = GPU_NUM or torch.cuda.device_count()
+USE_GPU = torch.cuda.device_count()
 if USE_GPU:
     print("using %d GPUs" % USE_GPU)
 
@@ -154,6 +154,7 @@ class Regression(nn.Module):
         batch_size = len(data)
         # list로 받은 데이터를 torch Variable로 변환합니다.
         data_in_torch = Variable(torch.from_numpy(np.array(data)).long())
+        lengths = Variable(torch.from_numpy(lengths))
 
         # Set initial states
         h0 = Variable(torch.zeros(self.num_layers*2, data_in_torch.size(0), self.hidden_size))
@@ -162,6 +163,7 @@ class Regression(nn.Module):
         # 만약 gpu를 사용중이라면, 데이터를 gpu 메모리로 보냅니다.
         if USE_GPU:
             data_in_torch = data_in_torch.cuda()
+            lengths = lengths.cuda()
             h0 = h0.cuda()
             c0 = c0.cuda()
 
@@ -186,6 +188,12 @@ class Regression(nn.Module):
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
         output = torch.sigmoid(self.fc(hidden)) * 9 + 1
         return output
+
+def sorted_in_decreasing_order(data, lengths):
+    sorted_index = np.argsort(-lengths)
+    sorted_data = list(np.array(data)[sorted_index])
+    sorted_lengths = lengths[sorted_index]
+    return sorted_data, np.maximum(sorted_lengths, 1)
 
 
 if __name__ == '__main__':
@@ -264,9 +272,7 @@ if __name__ == '__main__':
             t0 = time.time()
             for i, (data, lengths, labels) in enumerate(train_loader):
                 # 아래코드 때문에 학습이 제대로 안된다. 알 수 없음
-                #sorted_index = np.argsort(-lengths)
-                #data = np.array(data)[sorted_index]
-                #lengths = lengths[sorted_index]
+                #data, lengths = sorted_in_decreasing_order(data, lengths)
 
                 predictions = model(data, lengths)
                 label_vars = Variable(torch.from_numpy(labels))
@@ -300,6 +306,8 @@ if __name__ == '__main__':
             avg_accuracy = 0.0
             t0 = time.time()
             for i, (data, lengths, labels) in enumerate(eval_loader):
+                #data, lengths = sorted_in_decreasing_order(data, lengths)
+
                 predictions = model(data, lengths)
                 label_vars = Variable(torch.from_numpy(labels))
                 if USE_GPU:
