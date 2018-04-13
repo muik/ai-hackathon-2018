@@ -124,6 +124,8 @@ if __name__ == '__main__':
     args.add_argument('--embedding', type=int, default=32)
     args.add_argument('--dropout', type=float, default=0.5)
     args.add_argument('--rnn_layers', type=int, default=2)
+    args.add_argument('--max_dataset', type=int, default=-1)
+    args.add_argument('--model_type', type=str)
     config = args.parse_args()
 
     if config.mode == 'train':
@@ -137,7 +139,7 @@ if __name__ == '__main__':
         DATASET_PATH = '../sample_data/movie_review/'
 
     model = Regression(config.embedding, config.strmaxlen, dropout_prob,
-            config.rnn_layers, use_gpu=USE_GPU)
+            config.rnn_layers, use_gpu=USE_GPU, model_type=config.model_type)
     if USE_GPU:
         #if USE_GPU > 1:
         #    model = nn.DataParallel(model)
@@ -158,7 +160,7 @@ if __name__ == '__main__':
     if config.mode == 'train':
         # 데이터를 로드합니다.
         t0 = time.time()
-        dataset = MovieReviewDataset(DATASET_PATH, config.strmaxlen)
+        dataset = MovieReviewDataset(DATASET_PATH, config.strmaxlen, max_size=config.max_dataset)
         print("dataset loaded %.2f s" % (time.time() - t0))
         train_sampler, eval_sampler = dataset.get_sampler()
         if USE_GPU:
@@ -181,6 +183,7 @@ if __name__ == '__main__':
             avg_loss = 0.0
             avg_accuracy = 0.0
             t0 = time.time()
+            t1 = time.time()
             for i, (data, lengths, labels) in enumerate(train_loader):
                 # 아래코드 때문에 학습이 제대로 안된다. 알 수 없음
                 #data, lengths = sorted_in_decreasing_order(data, lengths)
@@ -210,12 +213,14 @@ if __name__ == '__main__':
 
             train_accuracy = float(avg_accuracy / total_batch)
             train_loss = float(avg_loss/total_batch)
-            print('epoch:', epoch, 'train_loss: %.3f' % train_loss, 'accuracy: %.2f' % train_accuracy)
+            print('epoch:', epoch, 'train_loss: %.3f' % train_loss, 'accuracy: %.2f' % train_accuracy,
+                    ', time: %.1fs' % (time.time() - t1))
 
             # Evaluation
             avg_loss = 0.0
             avg_accuracy = 0.0
             t0 = time.time()
+            t1 = time.time()
             for i, (data, lengths, labels) in enumerate(eval_loader):
                 #data, lengths = sorted_in_decreasing_order(data, lengths)
 
@@ -240,7 +245,8 @@ if __name__ == '__main__':
 
             eval_accuracy = float(avg_accuracy / total_eval_batch)
             eval_loss = float(avg_loss/total_eval_batch)
-            print('\t  eval_loss: %.3f' % eval_loss, 'accuracy: %.2f' % eval_accuracy)
+            print('\t  eval_loss: %.3f' % eval_loss, 'accuracy: %.2f' % eval_accuracy,
+                    ', time: %.1fs' % (time.time() - t1))
 
             # nsml ps, 혹은 웹 상의 텐서보드에 나타나는 값을 리포트하는 함수입니다.
             nsml.report(summary=True, scope=locals(), epoch=epoch, epoch_total=config.epochs,
