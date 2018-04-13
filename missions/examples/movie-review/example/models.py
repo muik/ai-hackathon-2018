@@ -43,6 +43,12 @@ class Regression(nn.Module):
         )
         self.attention_vector = nn.Softmax(dim=1)
 
+        self.attn = nn.Sequential(
+            nn.Linear(max_length*H*2, max_length),
+            nn.Softmax(dim=1),
+            nn.Dropout(p=dropout_prob),
+        )
+
         # 첫 번째 레이어
         self.fc = nn.Sequential(
             nn.Linear(H*2, H),
@@ -83,13 +89,19 @@ class Regression(nn.Module):
         output, (hn, _) = self.lstm(embeds, (h0, c0))
         last_h = torch.cat((hn[-2], hn[-1]), dim=1)
         output = torch.transpose(output, 1, 0)
-        #mask = (data_in_torch > 0).unsqueeze(-1).float()
-        #output = output * mask
+        mask = (data_in_torch > 0).unsqueeze(-1).float()
+        output = output * mask
 
         if self.model_type == 'last':
             hidden = last_h
         elif self.model_type == 'max':
             hidden, idx = torch.max(output, 1)
+        elif self.model_type == 'attn':
+            attn = output.view(-1, self.max_length*2*self.embedding_dim)
+            attn = self.attn(attn)
+            attn = attn.unsqueeze(1)
+            context = torch.matmul(attn, output)
+            hidden = context.squeeze(1)
         else:
             # https://github.com/wballard/mailscanner/blob/attention/mailscanner/layers/attention.py
             attn_mat = self.attention_matrix(output)
