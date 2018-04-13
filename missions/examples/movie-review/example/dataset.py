@@ -37,7 +37,7 @@ class MovieReviewDataset(Dataset):
     """
     영화리뷰 데이터를 읽어서, tuple (데이터, 레이블)의 형태로 리턴하는 파이썬 오브젝트 입니다.
     """
-    def __init__(self, dataset_path: str, max_length: int):
+    def __init__(self, dataset_path: str, max_length: int, max_size=-1):
         """
         initializer
 
@@ -45,6 +45,8 @@ class MovieReviewDataset(Dataset):
         :param max_length: 문자열의 최대 길이
         """
         print('pandas version:', pd.__version__)
+        if max_size > -1:
+            print('max dataset size:', max_size)
 
         # 데이터, 레이블 각각의 경로
         data_review = os.path.join(dataset_path, 'train', 'train_data')
@@ -52,22 +54,24 @@ class MovieReviewDataset(Dataset):
 
         # 영화리뷰 데이터를 읽고 preprocess까지 진행합니다
         with open(data_review, 'rt', encoding='utf-8') as f:
-            self.reviews, self.lengths = preprocess(f.readlines(), max_length)
+            self.reviews, self.lengths = preprocess(f.readlines()[:max_size], max_length)
 
         # 영화리뷰 레이블을 읽고 preprocess까지 진행합니다.
         with open(data_label) as f:
-            self.labels = [np.float32(x.rstrip()) for x in f.readlines()]
+            self.labels = [np.float32(x.rstrip()) for x in f.readlines()[:max_size]]
 
     def get_sampler(self):
-        sss = StratifiedShuffleSplit(n_splits=1, test_size=0.25)
+        test_size = 0.2
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=test_size)
         X = np.arange(len(self))
         try:
             train_index, eval_index = next(sss.split(X, self.labels))
         except ValueError as e:
             if not 'The least populated class in y has only ' in str(e):
                 raise e
+            print('Use just ShuffleSplit')
             from sklearn.model_selection import ShuffleSplit
-            sss = ShuffleSplit(n_splits=1, test_size=0.25)
+            sss = ShuffleSplit(n_splits=1, test_size=test_size)
             train_index, eval_index = next(sss.split(X, self.labels))
 
         train_sampler = SubsetRandomSampler(train_index)
