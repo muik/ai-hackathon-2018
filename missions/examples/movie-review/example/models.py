@@ -20,7 +20,7 @@ class Regression(nn.Module):
         super(Regression, self).__init__()
         self.use_gpu = use_gpu
         self.embedding_dim = embedding_dim
-        self.character_size = 251
+        self.character_size = 252
         self.output_dim = 1  # Regression
         self.max_length = max_length
 

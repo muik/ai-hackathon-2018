@@ -119,6 +119,7 @@ def preprocess(data: list, max_length: int):
 
     for idx, seq in enumerate(vectorized_data):
         length = len(seq)
+        seq = [x+1 for x in seq]
         if length >= max_length:
             length = max_length
             zero_padding[idx, :length] = np.array(seq)[:length]
