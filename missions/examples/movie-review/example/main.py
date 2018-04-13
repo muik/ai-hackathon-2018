@@ -126,6 +126,7 @@ if __name__ == '__main__':
     args.add_argument('--rnn_layers', type=int, default=2)
     args.add_argument('--max_dataset', type=int, default=-1)
     args.add_argument('--model_type', type=str)
+    args.add_argument('--dataset_path', type=str)
     config = args.parse_args()
 
     if config.mode == 'train':
@@ -136,7 +137,10 @@ if __name__ == '__main__':
         is_training = False
 
     if not HAS_DATASET and not IS_ON_NSML:  # It is not running on nsml
-        DATASET_PATH = '../sample_data/movie_review/'
+        if config.dataset_path:
+            DATASET_PATH = config.dataset_path
+        else:
+            DATASET_PATH = '../sample_data/movie_review/'
 
     model = Regression(config.embedding, config.strmaxlen, dropout_prob,
             config.rnn_layers, use_gpu=USE_GPU, model_type=config.model_type)
@@ -174,7 +178,7 @@ if __name__ == '__main__':
                                   sampler=eval_sampler, collate_fn=collate_fn,
                                   num_workers=2, pin_memory=pin_memory)
         total_batch = len(train_loader)
-        total_eval_batch = len(eval_loader)
+        total_eval_batch = min(len(eval_loader), 5)
         print("total batch:", total_batch)
         print("total eval batch:", total_eval_batch)
 
@@ -242,6 +246,8 @@ if __name__ == '__main__':
                           ', MSE in this minibatch: ', round(loss.data[0], 3),
                           ', Accuracy:', round(accuracy, 2), ', time: %.2f' % (time.time() - t0))
                     t0 = time.time()
+                if (i+1) >= total_eval_batch:
+                    break
 
             eval_accuracy = float(avg_accuracy / total_eval_batch)
             eval_loss = float(avg_loss/total_eval_batch)
