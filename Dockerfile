@@ -12,3 +12,14 @@ RUN pip install http://download.pytorch.org/whl/cpu/torch-0.3.0.post4-cp35-cp35m
 RUN pip install torchvision
 RUN pip install numpy==1.13.3
 RUN pip install pandas==0.20.3
+
+RUN apt-get update && apt-get install -y unzip
+RUN curl -L -o master.zip https://github.com/facebookresearch/fastText/archive/master.zip && \
+      unzip master.zip && rm master.zip && mv fastText-master fastText && \
+      cd fastText && make
+
+RUN apt-get update && apt-get install -y python3-dev cmake gcc
+RUN cd fastText && pip install .
+
+ENV PATH /fastText:$PATH
+ENV PYTHONPATH=/fastText:$PYTHONPATH
