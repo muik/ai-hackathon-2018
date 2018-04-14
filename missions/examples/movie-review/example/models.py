@@ -50,7 +50,7 @@ class Regression(nn.Module):
         )
 
         self.fc = nn.Sequential(
-            nn.Linear(H*2, H),
+            nn.Linear(H*4, H),
             nn.Tanh(),
             nn.Dropout(p=dropout_prob),
             nn.Linear(H, int(H/2)),
@@ -61,6 +61,23 @@ class Regression(nn.Module):
 
         self.model_type = model_type
         print('model type:', self.model_type)
+
+        def conv_layer(in_ch, out_ch, kernel):
+            return nn.Sequential(
+                nn.Conv1d(in_ch, out_ch, kernel),
+                nn.ReLU(),
+                nn.MaxPool1d(kernel, stride=kernel),
+                )
+        self.convs = [conv_layer(max_length, 50, x) for x in [3,5,7,10]]
+
+        self.conv_fc = nn.Sequential(
+            nn.Linear(2250, 500),
+            nn.ReLU(),
+            nn.Dropout(p=dropout_prob),
+            nn.Linear(500, 2*H),
+            nn.ReLU(),
+            nn.Dropout(p=dropout_prob),
+        )
 
     def forward(self, data: list, lengths: list):
         """
@@ -87,6 +104,11 @@ class Regression(nn.Module):
 
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
+
+        conv = torch.cat(tuple([conv(embeds) for conv in self.convs]), dim=2)
+        conv = conv.view(batch_size, -1)
+        conv = self.conv_fc(conv)
+
         embeds = torch.transpose(embeds, 1, 0)
         output, (hn, _) = self.lstm(embeds, (h0, c0))
         last_h = torch.cat((hn[-2], hn[-1]), dim=1)
@@ -111,6 +133,8 @@ class Regression(nn.Module):
             attn_vec = attn_vec.unsqueeze(2).expand(batch_size, self.max_length, self.rnn_dim)
             context = output * attn_vec
             hidden = torch.sum(context, dim=1)
+
+        hidden = torch.cat((hidden, conv), dim=1)
 
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
         output = torch.sigmoid(self.fc(hidden)) * 10 + 0.5
