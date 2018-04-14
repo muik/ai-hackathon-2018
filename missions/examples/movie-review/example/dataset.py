@@ -68,6 +68,17 @@ class MovieReviewDataset(Dataset):
 
         # 라벨별 비중
         #print(group_count('label', self.labels))
+        # label  counts  percent
+        #     1  148402     10.3
+        #     2   20539      1.4
+        #     3   21940      1.5
+        #     4   24137      1.7
+        #     5   40210      2.8
+        #     6   53681      3.7
+        #     7   80048      5.5
+        #     8  120005      8.3
+        #     9  129131      8.9
+        #    10  807600     55.9
 
     def get_sampler(self):
         test_size = 0.2
