@@ -71,6 +71,7 @@ def bind_model(model, config):
         model.eval()
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
         output_prediction = model(preprocessed_data, data_lengths)
+        output_prediction = torch.clamp(output_prediction, 1., 10.)
         point = output_prediction.data.squeeze(dim=1).tolist()
         # DONOTCHANGE: They are reserved for nsml
         # 리턴 결과는 [(confidence interval, 포인트)] 의 형태로 보내야만 리더보드에 올릴 수 있습니다. 리더보드 결과에 confidence interval의 값은 영향을 미치지 않습니다
@@ -120,8 +121,8 @@ if __name__ == '__main__':
     args.add_argument('--output', type=int, default=1)
     args.add_argument('--epochs', type=int, default=10)
     args.add_argument('--batch', type=int, default=1000)
-    args.add_argument('--strmaxlen', type=int, default=100)
-    args.add_argument('--embedding', type=int, default=32)
+    args.add_argument('--strmaxlen', type=int, default=80) # 99.99% = 80, 100% = 117
+    args.add_argument('--embedding', type=int, default=64)
     args.add_argument('--dropout', type=float, default=0.1)
     args.add_argument('--rnn_layers', type=int, default=2)
     args.add_argument('--max_dataset', type=int, default=-1)
@@ -182,7 +183,7 @@ if __name__ == '__main__':
                                       sampler=eval_sampler, collate_fn=collate_fn,
                                       num_workers=2, pin_memory=pin_memory)
         total_batch = len(train_loader)
-        total_eval_batch = min(len(eval_loader), 5)
+        total_eval_batch = min(len(eval_loader), 15)
         print("total batch:", total_batch)
         print("total eval batch:", total_eval_batch)
 
@@ -196,6 +197,10 @@ if __name__ == '__main__':
                 # 아래코드 때문에 학습이 제대로 안된다. 알 수 없음
                 #data, lengths = sorted_in_decreasing_order(data, lengths)
 
+                # 1, 10은 멀리 떨어트리기
+                #labels[labels < 2] = 0.5
+                #labels[labels > 9] = 10.5
+
                 predictions = model(data, lengths)
                 label_vars = Variable(torch.from_numpy(labels))
                 if USE_GPU:
@@ -208,6 +213,8 @@ if __name__ == '__main__':
                 loss.backward()
                 optimizer.step()
 
+                predictions = torch.clamp(predictions, 1., 10.)
+                label_vars = torch.clamp(label_vars, 1., 10.)
                 correct = label_vars.eq(torch.round(predictions.view(-1)))
                 accuracy = correct.float().mean().data[0]
                 avg_loss += loss.data[0]
@@ -236,6 +243,7 @@ if __name__ == '__main__':
                 #data, lengths = sorted_in_decreasing_order(data, lengths)
 
                 predictions = model(data, lengths)
+                predictions = torch.clamp(predictions, 1., 10.)
                 label_vars = Variable(torch.from_numpy(labels))
                 if USE_GPU:
                     label_vars = label_vars.cuda()

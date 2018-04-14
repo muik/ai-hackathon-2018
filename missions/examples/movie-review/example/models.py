@@ -49,12 +49,14 @@ class Regression(nn.Module):
             nn.Dropout(p=dropout_prob),
         )
 
-        # 첫 번째 레이어
         self.fc = nn.Sequential(
             nn.Linear(H*2, H),
             nn.Tanh(),
             nn.Dropout(p=dropout_prob),
-            nn.Linear(H, 1),
+            nn.Linear(H, int(H/2)),
+            nn.Tanh(),
+            nn.Dropout(p=dropout_prob),
+            nn.Linear(int(H/2), 1),
         )
 
         self.model_type = model_type
@@ -111,5 +113,5 @@ class Regression(nn.Module):
             hidden = torch.sum(context, dim=1)
 
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
-        output = torch.sigmoid(self.fc(hidden)) * 9 + 1
+        output = torch.sigmoid(self.fc(hidden)) * 10 + 0.5
         return output
