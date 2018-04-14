@@ -126,7 +126,7 @@ if __name__ == '__main__':
     args.add_argument('--dropout', type=float, default=0.1)
     args.add_argument('--rnn_layers', type=int, default=2)
     args.add_argument('--max_dataset', type=int, default=-1)
-    args.add_argument('--model_type', type=str)
+    args.add_argument('--model_type', type=str, default='last')
     args.add_argument('--dataset_path', type=str)
     args.add_argument('--no_eval', action='store_true')
     config = args.parse_args()
