@@ -127,6 +127,7 @@ if __name__ == '__main__':
     args.add_argument('--max_dataset', type=int, default=-1)
     args.add_argument('--model_type', type=str)
     args.add_argument('--dataset_path', type=str)
+    args.add_argument('--no_eval', action='store_true')
     config = args.parse_args()
 
     if config.mode == 'train':
@@ -166,17 +167,20 @@ if __name__ == '__main__':
         t0 = time.time()
         dataset = MovieReviewDataset(DATASET_PATH, config.strmaxlen, max_size=config.max_dataset)
         print("dataset loaded %.2f s" % (time.time() - t0))
-        train_sampler, eval_sampler = dataset.get_sampler()
-        if USE_GPU:
-            pin_memory = True
+        pin_memory = USE_GPU > 0
+        if config.no_eval:
+            train_loader = DataLoader(dataset=dataset, batch_size=config.batch,
+                                      shuffle=True, collate_fn=collate_fn,
+                                      num_workers=2, pin_memory=pin_memory)
+            eval_loader = []
         else:
-            pin_memory = False
-        train_loader = DataLoader(dataset=dataset, batch_size=config.batch,
-                                  sampler=train_sampler, collate_fn=collate_fn,
-                                  num_workers=2, pin_memory=pin_memory)
-        eval_loader = DataLoader(dataset=dataset, batch_size=config.batch,
-                                  sampler=eval_sampler, collate_fn=collate_fn,
-                                  num_workers=2, pin_memory=pin_memory)
+            train_sampler, eval_sampler = dataset.get_sampler()
+            train_loader = DataLoader(dataset=dataset, batch_size=config.batch,
+                                      sampler=train_sampler, collate_fn=collate_fn,
+                                      num_workers=2, pin_memory=pin_memory)
+            eval_loader = DataLoader(dataset=dataset, batch_size=config.batch,
+                                      sampler=eval_sampler, collate_fn=collate_fn,
+                                      num_workers=2, pin_memory=pin_memory)
         total_batch = len(train_loader)
         total_eval_batch = min(len(eval_loader), 5)
         print("total batch:", total_batch)
@@ -252,10 +256,14 @@ if __name__ == '__main__':
                 if (i+1) >= total_eval_batch:
                     break
 
-            eval_accuracy = float(avg_accuracy / total_eval_batch)
-            eval_loss = float(avg_loss/total_eval_batch)
-            print('\t  eval_loss: %.3f' % eval_loss, 'accuracy: %.2f' % eval_accuracy,
-                    ', time: %.1fs' % (time.time() - t1))
+            if total_eval_batch > 0:
+                eval_accuracy = float(avg_accuracy / total_eval_batch)
+                eval_loss = float(avg_loss/total_eval_batch)
+                print('\t  eval_loss: %.3f' % eval_loss, 'accuracy: %.2f' % eval_accuracy,
+                        ', time: %.1fs' % (time.time() - t1))
+            else:
+                eval_accuracy = 0
+                eval_loss = 0
 
             # nsml ps, 혹은 웹 상의 텐서보드에 나타나는 값을 리포트하는 함수입니다.
             nsml.report(summary=True, scope=locals(), epoch=epoch, epoch_total=config.epochs,
