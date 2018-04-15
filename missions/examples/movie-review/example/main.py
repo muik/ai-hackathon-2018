@@ -164,7 +164,7 @@ if __name__ == '__main__':
     bind_model(model, config)
 
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=0.0001)
 
     # DONOTCHANGE: They are reserved for nsml
     if config.pause:
