@@ -5,6 +5,7 @@ from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch.nn.functional as F
 from char import CHAR_SIZE
+from word import WORD_SIZE
 
 class Regression(nn.Module):
     """
@@ -51,7 +52,7 @@ class Regression(nn.Module):
         )
 
         self.fc = nn.Sequential(
-            nn.Linear(1 + 135 + 2*H + 2*H, H),
+            nn.Linear(1 + 135 + 6*H, H),
             nn.ReLU(),
             nn.Dropout(p=dropout_prob),
             nn.Linear(H, 1),
@@ -91,7 +92,12 @@ class Regression(nn.Module):
         self.char_lstm = nn.LSTM(D, H, self.num_layers, batch_first=False, bidirectional=True,
                 dropout=dropout_prob)
 
-    def forward(self, data: list, lengths: list, char_ids: list, char_lengths: list):
+        # word rnn
+        self.word_embeddings = nn.Embedding(WORD_SIZE, self.embedding_dim, padding_idx=0)
+        self.word_lstm = nn.LSTM(D, H, self.num_layers, batch_first=False, bidirectional=True,
+                dropout=dropout_prob)
+
+    def forward(self, data: list, lengths: list, char_ids: list, char_lengths: list, word_ids: list, word_lengths: list):
         """
 
         :param data: 실제 입력값
@@ -106,21 +112,29 @@ class Regression(nn.Module):
         char_ids = Variable(torch.from_numpy(char_ids).long())
         char_lengths = Variable(torch.from_numpy(char_lengths))
 
+        word_ids = Variable(torch.from_numpy(word_ids).long())
+        word_lengths = Variable(torch.from_numpy(word_lengths))
+
         # Set initial states
         h0 = Variable(torch.zeros(self.num_layers*2, data_in_torch.size(0), self.hidden_size))
         c0 = Variable(torch.zeros(self.num_layers*2, data_in_torch.size(0), self.hidden_size))
         h1 = Variable(torch.zeros(self.num_layers*2, char_ids.size(0), self.hidden_size))
         c1 = Variable(torch.zeros(self.num_layers*2, char_ids.size(0), self.hidden_size))
+        h2 = Variable(torch.zeros(self.num_layers*2, word_ids.size(0), self.hidden_size))
+        c2 = Variable(torch.zeros(self.num_layers*2, word_ids.size(0), self.hidden_size))
 
         # 만약 gpu를 사용중이라면, 데이터를 gpu 메모리로 보냅니다.
         if self.use_gpu:
             data_in_torch = data_in_torch.cuda()
             lengths = lengths.cuda()
             char_ids = char_ids.cuda()
+            word_ids = word_ids.cuda()
             h0 = h0.cuda()
             c0 = c0.cuda()
             h1 = h1.cuda()
             c1 = c1.cuda()
+            h2 = h2.cuda()
+            c2 = c2.cuda()
 
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
@@ -130,7 +144,7 @@ class Regression(nn.Module):
         conv = conv.view(batch_size, -1)
 
         embeds = torch.transpose(embeds, 1, 0)
-        output, (hn, _) = self.lstm(embeds, (h0, c0))
+        output, (hn, _) = self.lstm(embeds)
         last_h = torch.cat((hn[-2], hn[-1]), dim=1)
         output = torch.transpose(output, 1, 0)
         mask = (data_in_torch > 0).unsqueeze(-1).float()
@@ -140,6 +154,11 @@ class Regression(nn.Module):
         char_embeds = torch.transpose(char_embeds, 1, 0)
         _, (hn, _) = self.char_lstm(char_embeds, (h1, c1))
         char_last_h = torch.cat((hn[-2], hn[-1]), dim=1)
+
+        word_embeds = self.word_embeddings(word_ids)
+        word_embeds = torch.transpose(word_embeds, 1, 0)
+        _, (hn, _) = self.word_lstm(word_embeds, (h2, c2))
+        word_last_h = torch.cat((hn[-2], hn[-1]), dim=1)
 
         if self.model_type == 'last':
             hidden = last_h
@@ -160,7 +179,7 @@ class Regression(nn.Module):
             hidden = torch.sum(context, dim=1)
 
         lengths = self.batch_norm(lengths.float().unsqueeze(1))
-        hidden = torch.cat((hidden, conv, lengths, char_last_h), dim=1)
+        hidden = torch.cat((hidden, conv, lengths, char_last_h, word_last_h), dim=1)
 
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
         output = F.relu(self.fc(hidden)) * 10 + 0.5

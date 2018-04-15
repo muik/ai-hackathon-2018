@@ -94,15 +94,20 @@ def collate_fn(data: list):
     length = []
     review_char_id = []
     review_char_length = []
+    word_id = []
+    word_length = []
     label = []
     for datum in data:
         review.append(datum[0])
         length.append(datum[1])
         review_char_id.append(datum[2])
         review_char_length.append(datum[3])
-        label.append(datum[4])
+        word_id.append(datum[4])
+        word_length.append(datum[5])
+        label.append(datum[6])
     # 각각 데이터, 레이블을 리턴
-    return review, np.array(length), np.array(review_char_id), np.array(review_char_length), np.array(label)
+    return review, np.array(length), np.array(review_char_id), np.array(review_char_length), \
+            np.array(word_id), np.array(word_length), np.array(label)
 
 
 def sorted_in_decreasing_order(data, lengths):
@@ -197,7 +202,7 @@ if __name__ == '__main__':
             avg_accuracy = 0.0
             t0 = time.time()
             t1 = time.time()
-            for i, (data, lengths, char_ids, char_lengths, labels) in enumerate(train_loader):
+            for i, (data, lengths, char_ids, char_lengths, word_ids, word_lengths, labels) in enumerate(train_loader):
                 # 아래코드 때문에 학습이 제대로 안된다. 알 수 없음
                 #data, lengths = sorted_in_decreasing_order(data, lengths)
 
@@ -205,7 +210,7 @@ if __name__ == '__main__':
                 #labels[labels < 2] = 0.5
                 #labels[labels > 9] = 10.5
 
-                predictions = model(data, lengths, char_ids, char_lengths)
+                predictions = model(data, lengths, char_ids, char_lengths, word_ids, word_lengths)
                 label_vars = Variable(torch.from_numpy(labels))
                 if USE_GPU:
                     label_vars = label_vars.cuda()
@@ -243,10 +248,10 @@ if __name__ == '__main__':
             avg_accuracy = 0.0
             t0 = time.time()
             t1 = time.time()
-            for i, (data, lengths, char_ids, char_lengths, labels) in enumerate(eval_loader):
+            for i, (data, lengths, char_ids, char_lengths, word_ids, word_lengths, labels) in enumerate(eval_loader):
                 #data, lengths = sorted_in_decreasing_order(data, lengths)
 
-                predictions = model(data, lengths, char_ids, char_lengths)
+                predictions = model(data, lengths, char_ids, char_lengths, word_ids, word_lengths)
                 predictions = torch.clamp(predictions, 1., 10.)
                 label_vars = Variable(torch.from_numpy(labels))
                 if USE_GPU:
