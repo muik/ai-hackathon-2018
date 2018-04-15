@@ -75766,7 +75766,7 @@ def tokenize(line):
     return line
 
 def line_to_word_ids(line):
-    return [word_to_idx(x) for x in list(tokenize(line))]
+    return [word_to_idx(x) for x in tokenize(line).split()]
 
 if __name__ == '__main__':
     print(WORD_SIZE)
