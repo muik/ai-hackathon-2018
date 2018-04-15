@@ -182,5 +182,5 @@ class Regression(nn.Module):
         hidden = torch.cat((hidden, conv, lengths, char_last_h, word_last_h), dim=1)
 
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
-        output = F.relu(self.fc(hidden)) * 10 + 0.5
+        output = torch.sigmoid(self.fc(hidden)) * 9 + 1
         return output

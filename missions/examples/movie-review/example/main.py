@@ -192,7 +192,7 @@ if __name__ == '__main__':
                                       sampler=eval_sampler, collate_fn=collate_fn,
                                       num_workers=2, pin_memory=pin_memory)
         total_batch = len(train_loader)
-        total_eval_batch = min(len(eval_loader), 15)
+        total_eval_batch = min(len(eval_loader), 30)
         print("total batch:", total_batch)
         print("total eval batch:", total_eval_batch)
 
