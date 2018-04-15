@@ -21,5 +21,5 @@ RUN curl -L -o master.zip https://github.com/facebookresearch/fastText/archive/m
 RUN apt-get update && apt-get install -y python3-dev cmake gcc
 RUN cd fastText && pip install .
 
-ENV PATH /fastText:$PATH
+ENV PATH /notebooks/fastText:$PATH
 ENV PYTHONPATH=/fastText:$PYTHONPATH
