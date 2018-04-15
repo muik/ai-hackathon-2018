@@ -50,7 +50,7 @@ class Regression(nn.Module):
         )
 
         self.fc = nn.Sequential(
-            nn.Linear(135 + 2*H, H),
+            nn.Linear(1 + 135 + 2*H, H),
             nn.ReLU(),
             nn.Dropout(p=dropout_prob),
             nn.Linear(H, 1),
@@ -82,6 +82,8 @@ class Regression(nn.Module):
                 )
         self.convs = [conv_layer2(H, 5, x) for x in [3,5]]
         self.convs += [conv_layer(H, 5, x) for x in [7,10]]
+
+        self.batch_norm = nn.BatchNorm1d(1)
 
     def forward(self, data: list, lengths: list):
         """
@@ -138,7 +140,8 @@ class Regression(nn.Module):
             context = output * attn_vec
             hidden = torch.sum(context, dim=1)
 
-        hidden = torch.cat((hidden, conv), dim=1)
+        lengths = self.batch_norm(lengths.float().unsqueeze(1))
+        hidden = torch.cat((hidden, conv, lengths), dim=1)
 
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
         output = F.relu(self.fc(hidden)) * 10 + 0.5
