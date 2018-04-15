@@ -31,7 +31,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from sklearn.model_selection import StratifiedShuffleSplit
 
 from kor_char_parser import decompose_str_as_one_hot
-from char import char_to_idx
+from char import line_to_char_ids
 from word import line_to_word_ids
 
 def group_count(name, items):
@@ -187,8 +187,7 @@ def preprocess(data: list, max_length: int):
 def preprocess_char(data: list, max_length: int):
     t0 = time.time()
     with Pool(12) as p:
-        char_data = p.map(list, [datum.strip() for datum in data])
-    char_data = [[char_to_idx(c) for c in chars] for chars in char_data]
+        char_data = p.map(line_to_char_ids, data)
 
     total_count = len(data)
     zero_padding = np.zeros((total_count, max_length), dtype=np.int32)

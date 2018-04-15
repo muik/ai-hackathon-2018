@@ -8,5 +8,8 @@ def char_to_idx(char):
         return char_id_map[char] + 1
     return CHAR_SIZE - 1
 
+def line_to_char_ids(line):
+    return [char_to_idx(x) for x in list(line.strip())]
+
 if __name__ == '__main__':
     print(CHAR_SIZE)
