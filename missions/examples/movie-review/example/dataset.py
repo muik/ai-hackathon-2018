@@ -31,6 +31,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from sklearn.model_selection import StratifiedShuffleSplit
 
 from kor_char_parser import decompose_str_as_one_hot
+from char import char_to_idx
 
 def group_count(name, items):
     df = pd.DataFrame(data={name: items})
@@ -60,7 +61,9 @@ class MovieReviewDataset(Dataset):
 
         # 영화리뷰 데이터를 읽고 preprocess까지 진행합니다
         with open(data_review, 'rt', encoding='utf-8') as f:
-            self.reviews, self.lengths = preprocess(f.readlines()[:max_size], max_length)
+            lines = f.readlines()[:max_size]
+            self.reviews, self.lengths, self.review_char_ids, self.review_char_lengths = preprocess(lines, max_length)
+            #self._save_chars(lines)
 
         # 영화리뷰 레이블을 읽고 preprocess까지 진행합니다.
         with open(data_label) as f:
@@ -111,7 +114,25 @@ class MovieReviewDataset(Dataset):
         :param idx: 필요한 데이터의 인덱스
         :return: 인덱스에 맞는 데이터, 레이블 pair를 리턴합니다
         """
-        return self.reviews[idx], self.lengths[idx], self.labels[idx]
+        return self.reviews[idx], self.lengths[idx], self.review_char_ids[idx], \
+                self.review_char_lengths[idx], self.labels[idx]
+
+    def _save_chars(self, lines):
+        chars = [char for line in lines for char in list(line.strip().replace(' ', ''))]
+        from collections import Counter
+        min_count = 5
+        items = Counter(chars).most_common()
+        split_idx = 0
+        for i, (char, count) in enumerate(reversed(items)):
+            if count >= min_count:
+                split_idx = i
+                break
+        items = items[:-split_idx]
+
+        with open('chars.txt', 'wb') as f:
+            for char, _ in items:
+                f.write(char.encode('utf-8'))
+
 
 def preprocess(data: list, max_length: int):
     """
@@ -147,4 +168,32 @@ def preprocess(data: list, max_length: int):
             zero_padding[idx, :length] = np.array(seq)
         vec_data_lengths[idx] = length
     print("zero_padding loaded %.2f s" % (time.time() - t0))
-    return zero_padding, vec_data_lengths
+
+    char_zero_padding, char_lengths = preprocess_char(data, 50) # 99.9% max 47, 100% max 99
+
+    return zero_padding, vec_data_lengths, char_zero_padding, char_lengths
+
+def preprocess_char(data: list, max_length: int):
+    t0 = time.time()
+    with Pool(12) as p:
+        char_data = p.map(list, [datum.strip() for datum in data])
+    char_data = [[char_to_idx(c) for c in chars] for chars in char_data]
+
+    total_count = len(data)
+    zero_padding = np.zeros((total_count, max_length), dtype=np.int32)
+    data_lengths = np.zeros((total_count), dtype=np.int32)
+
+    #df = pd.DataFrame(data={'char_length': char_lengths})
+    #print(df.describe(percentiles=[0.95, 0.999]))
+
+    for idx, seq in enumerate(char_data):
+        length = len(seq)
+        if length >= max_length:
+            length = max_length
+            zero_padding[idx, :length] = np.array(seq)[:length]
+        else:
+            zero_padding[idx, :length] = np.array(seq)
+        data_lengths[idx] = length
+
+    print("char zero_padding loaded %.2f s" % (time.time() - t0))
+    return zero_padding, data_lengths

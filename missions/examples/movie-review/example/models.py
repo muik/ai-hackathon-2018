@@ -4,6 +4,7 @@ from torch.autograd import Variable
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch.nn.functional as F
+from char import CHAR_SIZE
 
 class Regression(nn.Module):
     """
@@ -50,7 +51,7 @@ class Regression(nn.Module):
         )
 
         self.fc = nn.Sequential(
-            nn.Linear(1 + 135 + 2*H, H),
+            nn.Linear(1 + 135 + 2*H + 2*H, H),
             nn.ReLU(),
             nn.Dropout(p=dropout_prob),
             nn.Linear(H, 1),
@@ -85,7 +86,12 @@ class Regression(nn.Module):
 
         self.batch_norm = nn.BatchNorm1d(1)
 
-    def forward(self, data: list, lengths: list):
+        # char rnn
+        self.char_embeddings = nn.Embedding(CHAR_SIZE, self.embedding_dim, padding_idx=0)
+        self.char_lstm = nn.LSTM(D, H, self.num_layers, batch_first=False, bidirectional=True,
+                dropout=dropout_prob)
+
+    def forward(self, data: list, lengths: list, char_ids: list, char_lengths: list):
         """
 
         :param data: 실제 입력값
@@ -96,6 +102,9 @@ class Regression(nn.Module):
         # list로 받은 데이터를 torch Variable로 변환합니다.
         data_in_torch = Variable(torch.from_numpy(np.array(data)).long())
         lengths = Variable(torch.from_numpy(lengths))
+
+        char_ids = Variable(torch.from_numpy(char_ids).long())
+        char_lengths = Variable(torch.from_numpy(char_lengths))
 
         # Set initial states
         h0 = Variable(torch.zeros(self.num_layers*2, data_in_torch.size(0), self.hidden_size))
@@ -122,6 +131,11 @@ class Regression(nn.Module):
         mask = (data_in_torch > 0).unsqueeze(-1).float()
         output = output * mask
 
+        char_embeds = self.embeddings(data_in_torch)
+        char_embeds = torch.transpose(char_embeds, 1, 0)
+        _, (hn, _) = self.lstm(char_embeds)
+        char_last_h = torch.cat((hn[-2], hn[-1]), dim=1)
+
         if self.model_type == 'last':
             hidden = last_h
         elif self.model_type == 'max':
@@ -141,7 +155,7 @@ class Regression(nn.Module):
             hidden = torch.sum(context, dim=1)
 
         lengths = self.batch_norm(lengths.float().unsqueeze(1))
-        hidden = torch.cat((hidden, conv, lengths), dim=1)
+        hidden = torch.cat((hidden, conv, lengths, char_last_h), dim=1)
 
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
         output = F.relu(self.fc(hidden)) * 10 + 0.5
