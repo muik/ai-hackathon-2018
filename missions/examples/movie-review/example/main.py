@@ -67,10 +67,10 @@ def bind_model(model, config):
         :return:
         """
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
-        preprocessed_data, data_lengths = preprocess(raw_data, config.strmaxlen)
+        preprocessed_data, data_lengths, char_ids, char_lengths, word_ids, word_lengths = preprocess(raw_data, config.strmaxlen)
         model.eval()
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
-        output_prediction = model(preprocessed_data, data_lengths)
+        output_prediction = model(preprocessed_data, data_lengths, char_ids, char_lengths, word_ids, word_lengths)
         output_prediction = torch.clamp(output_prediction, 1., 10.)
         point = output_prediction.data.squeeze(dim=1).tolist()
         # DONOTCHANGE: They are reserved for nsml
