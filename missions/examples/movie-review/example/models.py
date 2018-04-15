@@ -88,10 +88,10 @@ class Regression(nn.Module):
 
         self.conv_fc = nn.Sequential(
             nn.Linear(1350, 500),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Dropout(p=dropout_prob),
             nn.Linear(500, 2*H),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Dropout(p=dropout_prob),
         )
 
