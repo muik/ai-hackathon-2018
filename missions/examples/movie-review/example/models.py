@@ -63,18 +63,25 @@ class Regression(nn.Module):
         print('model type:', self.model_type)
 
         def conv_layer(in_ch, out_ch, kernel):
-            conv1d = nn.Conv1d(in_ch, out_ch, kernel)
-            if use_gpu:
-                conv1d = conv1d.cuda()
             return nn.Sequential(
-                conv1d,
+                nn.Conv1d(in_ch, out_ch, kernel),
                 nn.ReLU(),
                 nn.MaxPool1d(kernel, stride=kernel),
                 )
-        self.convs = [conv_layer(max_length, 50, x) for x in [3,5,7,10]]
+        def conv_layer2(in_ch, out_ch, kernel):
+            return nn.Sequential(
+                nn.Conv1d(in_ch, out_ch*2, kernel),
+                nn.ReLU(),
+                nn.MaxPool1d(kernel, stride=kernel),
+                nn.Conv1d(out_ch*2, out_ch, kernel),
+                nn.ReLU(),
+                nn.MaxPool1d(kernel, stride=kernel),
+                )
+        self.convs = [conv_layer2(max_length, 50, x) for x in [3,5]]
+        self.convs += [conv_layer(max_length, 50, x) for x in [7,10]]
 
         self.conv_fc = nn.Sequential(
-            nn.Linear(2250, 500),
+            nn.Linear(1000, 500),
             nn.ReLU(),
             nn.Dropout(p=dropout_prob),
             nn.Linear(500, 2*H),
