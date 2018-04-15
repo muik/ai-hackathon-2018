@@ -128,6 +128,7 @@ class Regression(nn.Module):
             data_in_torch = data_in_torch.cuda()
             lengths = lengths.cuda()
             char_ids = char_ids.cuda()
+            char_lengths = char_lengths.cuda()
             word_ids = word_ids.cuda()
             h0 = h0.cuda()
             c0 = c0.cuda()
@@ -178,8 +179,8 @@ class Regression(nn.Module):
             context = output * attn_vec
             hidden = torch.sum(context, dim=1)
 
-        lengths = self.batch_norm(lengths.float().unsqueeze(1))
-        hidden = torch.cat((hidden, conv, lengths, char_last_h, word_last_h), dim=1)
+        char_lengths = self.batch_norm(char_lengths.float().unsqueeze(1))
+        hidden = torch.cat((hidden, conv, char_lengths, char_last_h, word_last_h), dim=1)
 
         # 영화 리뷰가 1~10점이기 때문에, 스케일을 맞춰줍니다
         output = torch.sigmoid(self.fc(hidden)) * 9 + 1
