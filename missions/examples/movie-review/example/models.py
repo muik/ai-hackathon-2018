@@ -109,13 +109,18 @@ class Regression(nn.Module):
         # Set initial states
         h0 = Variable(torch.zeros(self.num_layers*2, data_in_torch.size(0), self.hidden_size))
         c0 = Variable(torch.zeros(self.num_layers*2, data_in_torch.size(0), self.hidden_size))
+        h1 = Variable(torch.zeros(self.num_layers*2, char_ids.size(0), self.hidden_size))
+        c1 = Variable(torch.zeros(self.num_layers*2, char_ids.size(0), self.hidden_size))
 
         # 만약 gpu를 사용중이라면, 데이터를 gpu 메모리로 보냅니다.
         if self.use_gpu:
             data_in_torch = data_in_torch.cuda()
             lengths = lengths.cuda()
+            char_ids = char_ids.cuda()
             h0 = h0.cuda()
             c0 = c0.cuda()
+            h1 = h1.cuda()
+            c1 = c1.cuda()
 
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
@@ -131,9 +136,9 @@ class Regression(nn.Module):
         mask = (data_in_torch > 0).unsqueeze(-1).float()
         output = output * mask
 
-        char_embeds = self.embeddings(data_in_torch)
+        char_embeds = self.char_embeddings(char_ids)
         char_embeds = torch.transpose(char_embeds, 1, 0)
-        _, (hn, _) = self.lstm(char_embeds)
+        _, (hn, _) = self.char_lstm(char_embeds, (h1, c1))
         char_last_h = torch.cat((hn[-2], hn[-1]), dim=1)
 
         if self.model_type == 'last':
