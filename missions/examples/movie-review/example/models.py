@@ -68,7 +68,7 @@ class Regression(nn.Module):
                 conv1d = conv1d.cuda()
             return nn.Sequential(
                 conv1d,
-                nn.ReLU(),
+                nn.Tanh(),
                 nn.MaxPool1d(kernel, stride=kernel),
                 )
         def conv_layer2(in_ch, out_ch, kernel):
@@ -77,17 +77,17 @@ class Regression(nn.Module):
                 conv1ds = [conv1d.cuda() for conv1d in conv1ds]
             return nn.Sequential(
                 conv1ds[0],
-                nn.ReLU(),
+                nn.Tanh(),
                 nn.MaxPool1d(kernel, stride=kernel),
                 conv1ds[1],
-                nn.ReLU(),
+                nn.Tanh(),
                 nn.MaxPool1d(kernel, stride=kernel),
                 )
-        self.convs = [conv_layer2(max_length, 50, x) for x in [3,5]]
-        self.convs += [conv_layer(max_length, 50, x) for x in [7,10]]
+        self.convs = [conv_layer2(H, 50, x) for x in [3,5]]
+        self.convs += [conv_layer(H, 50, x) for x in [7,10]]
 
         self.conv_fc = nn.Sequential(
-            nn.Linear(1000, 500),
+            nn.Linear(1350, 500),
             nn.ReLU(),
             nn.Dropout(p=dropout_prob),
             nn.Linear(500, 2*H),
@@ -121,7 +121,8 @@ class Regression(nn.Module):
         # 뉴럴네트워크를 지나 결과를 출력합니다.
         embeds = self.embeddings(data_in_torch)
 
-        conv = torch.cat(tuple([conv(embeds) for conv in self.convs]), dim=2)
+        conv_in = torch.transpose(embeds, 1, 2)
+        conv = torch.cat(tuple([conv(conv_in) for conv in self.convs]), dim=2)
         conv = conv.view(batch_size, -1)
         conv = self.conv_fc(conv)
 
