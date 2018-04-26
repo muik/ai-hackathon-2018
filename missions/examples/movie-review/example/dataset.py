@@ -63,9 +63,9 @@ class MovieReviewDataset(Dataset):
         # 영화리뷰 데이터를 읽고 preprocess까지 진행합니다
         with open(data_review, 'rt', encoding='utf-8') as f:
             lines = f.readlines()[:max_size]
-            self.reviews, self.lengths, self.review_char_ids, self.review_char_lengths, self.word_ids, self.word_lengths = preprocess(lines, max_length)
             #self._save_chars(lines)
             #self._save_words(lines)
+            self.reviews, self.lengths, self.review_char_ids, self.review_char_lengths, self.word_ids, self.word_lengths = preprocess(lines, max_length)
 
         # 영화리뷰 레이블을 읽고 preprocess까지 진행합니다.
         with open(data_label) as f:
@@ -137,10 +137,22 @@ class MovieReviewDataset(Dataset):
                 f.write(char.encode('utf-8'))
 
     def _save_words(self, lines):
-        with open('train_words.txt', 'wb') as f:
-            for line in lines:
-                line = tokenize(line)
-                f.write(line.encode('utf-8'))
+        from word import tokenize
+        from collections import Counter
+
+        tokens = [token for line in lines for token in tokenize(line).split()]
+        min_count = 5
+        items = Counter(tokens).most_common()
+        split_idx = 0
+        for i, (_, count) in enumerate(reversed(items)):
+            if count >= min_count:
+                split_idx = i
+                break
+        items = items[:-split_idx]
+
+        with open('words.txt', 'wb') as f:
+            for token, _ in items:
+                f.write(token.encode('utf-8'))
                 f.write("\n".encode("utf-8"))
 
 
