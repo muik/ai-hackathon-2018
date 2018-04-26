@@ -132,7 +132,7 @@ if __name__ == '__main__':
     args.add_argument('--batch', type=int, default=1000)
     args.add_argument('--strmaxlen', type=int, default=80) # 99.99% = 80, 100% = 117
     args.add_argument('--embedding', type=int, default=64)
-    args.add_argument('--dropout', type=float, default=0.1)
+    args.add_argument('--dropout', type=float, default=0.3)
     args.add_argument('--rnn_layers', type=int, default=2)
     args.add_argument('--max_dataset', type=int, default=-1)
     args.add_argument('--model_type', type=str, default='last')
