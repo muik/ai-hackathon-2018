@@ -67,10 +67,10 @@ def bind_model(model, config):
         :return:
         """
         # dataset.py에서 작성한 preprocess 함수를 호출하여, 문자열을 벡터로 변환합니다
-        preprocessed_data, data_lengths = preprocess(raw_data, config.strmaxlen)
+        preprocessed_data, data_lengths, char_ids, char_lengths, word_ids, word_lengths = preprocess(raw_data, config.strmaxlen)
         model.eval()
         # 저장한 모델에 입력값을 넣고 prediction 결과를 리턴받습니다
-        output_prediction = model(preprocessed_data, data_lengths)
+        output_prediction = model(preprocessed_data, data_lengths, char_ids, char_lengths, word_ids, word_lengths)
         output_prediction = torch.clamp(output_prediction, 1., 10.)
         point = output_prediction.data.squeeze(dim=1).tolist()
         # DONOTCHANGE: They are reserved for nsml
@@ -92,13 +92,22 @@ def collate_fn(data: list):
     """
     review = []
     length = []
+    review_char_id = []
+    review_char_length = []
+    word_id = []
+    word_length = []
     label = []
     for datum in data:
         review.append(datum[0])
         length.append(datum[1])
-        label.append(datum[2])
+        review_char_id.append(datum[2])
+        review_char_length.append(datum[3])
+        word_id.append(datum[4])
+        word_length.append(datum[5])
+        label.append(datum[6])
     # 각각 데이터, 레이블을 리턴
-    return review, np.array(length), np.array(label)
+    return review, np.array(length), np.array(review_char_id), np.array(review_char_length), \
+            np.array(word_id), np.array(word_length), np.array(label)
 
 
 def sorted_in_decreasing_order(data, lengths):
@@ -155,7 +164,7 @@ if __name__ == '__main__':
     bind_model(model, config)
 
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=0.0001)
 
     # DONOTCHANGE: They are reserved for nsml
     if config.pause:
@@ -183,7 +192,7 @@ if __name__ == '__main__':
                                       sampler=eval_sampler, collate_fn=collate_fn,
                                       num_workers=2, pin_memory=pin_memory)
         total_batch = len(train_loader)
-        total_eval_batch = min(len(eval_loader), 15)
+        total_eval_batch = min(len(eval_loader), 30)
         print("total batch:", total_batch)
         print("total eval batch:", total_eval_batch)
 
@@ -193,7 +202,7 @@ if __name__ == '__main__':
             avg_accuracy = 0.0
             t0 = time.time()
             t1 = time.time()
-            for i, (data, lengths, labels) in enumerate(train_loader):
+            for i, (data, lengths, char_ids, char_lengths, word_ids, word_lengths, labels) in enumerate(train_loader):
                 # 아래코드 때문에 학습이 제대로 안된다. 알 수 없음
                 #data, lengths = sorted_in_decreasing_order(data, lengths)
 
@@ -201,7 +210,7 @@ if __name__ == '__main__':
                 #labels[labels < 2] = 0.5
                 #labels[labels > 9] = 10.5
 
-                predictions = model(data, lengths)
+                predictions = model(data, lengths, char_ids, char_lengths, word_ids, word_lengths)
                 label_vars = Variable(torch.from_numpy(labels))
                 if USE_GPU:
                     label_vars = label_vars.cuda()
@@ -239,10 +248,10 @@ if __name__ == '__main__':
             avg_accuracy = 0.0
             t0 = time.time()
             t1 = time.time()
-            for i, (data, lengths, labels) in enumerate(eval_loader):
+            for i, (data, lengths, char_ids, char_lengths, word_ids, word_lengths, labels) in enumerate(eval_loader):
                 #data, lengths = sorted_in_decreasing_order(data, lengths)
 
-                predictions = model(data, lengths)
+                predictions = model(data, lengths, char_ids, char_lengths, word_ids, word_lengths)
                 predictions = torch.clamp(predictions, 1., 10.)
                 label_vars = Variable(torch.from_numpy(labels))
                 if USE_GPU:
