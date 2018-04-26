@@ -65,6 +65,7 @@ class MovieReviewDataset(Dataset):
             lines = f.readlines()[:max_size]
             #self._save_chars(lines)
             #self._save_words(lines)
+            #self._save_train_words(lines)
             self.reviews, self.lengths, self.review_char_ids, self.review_char_lengths, self.word_ids, self.word_lengths = preprocess(lines, max_length)
 
         # 영화리뷰 레이블을 읽고 preprocess까지 진행합니다.
@@ -153,6 +154,14 @@ class MovieReviewDataset(Dataset):
         with open('words.txt', 'wb') as f:
             for token, _ in items:
                 f.write(token.encode('utf-8'))
+                f.write("\n".encode("utf-8"))
+
+    def _save_train_words(self, lines):
+        from word import tokenize
+        with open('train_words.txt', 'wb') as f:
+            for line in lines:
+                line = tokenize(line)
+                f.write(line.encode('utf-8'))
                 f.write("\n".encode("utf-8"))
 
 
