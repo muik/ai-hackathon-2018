@@ -43,7 +43,7 @@ def get_available_gpus():
 
 USE_GPU = GPU_NUM or len(get_available_gpus())
 if USE_GPU:
-    print("using %d GPUs" % USE_GPU)
+    print("using %d GPUs" % int(USE_GPU))
 
 # DONOTCHANGE: They are reserved for nsml
 # This is for nsml leaderboard
